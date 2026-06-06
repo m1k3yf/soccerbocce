@@ -107,8 +107,10 @@
     backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);pointer-events:none;
     transition:opacity .3s, transform .3s;}
   #coach.hide{opacity:0;transform:translateX(-50%) translateY(8px);}
-  #menuBtn{position:fixed;left:14px;bottom:max(14px,env(safe-area-inset-bottom));z-index:11;display:none;}
+  #menuBtn{position:fixed;left:78px;bottom:max(14px,env(safe-area-inset-bottom));z-index:11;display:none;}
   #menuBtn.show{display:block;}
+  #muteBtn{position:fixed;left:14px;bottom:max(14px,env(safe-area-inset-bottom));z-index:30;
+    width:42px;height:38px;padding:0;font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;}
   .pill{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(6,18,13,.6);
     color:var(--cream);border-radius:999px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;
     backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);}
@@ -127,6 +129,7 @@
   <div id="midhud"><span id="frameNo">Frame 1</span><span id="turn">Your kick</span></div>
   <div class="score B" id="scoreB"><span class="nm" id="nmB">Bocci</span><span class="pts" id="ptsB">0</span><span class="balls" id="ballsB">●●●●</span></div>
 </div>
+<button id="muteBtn" class="pill" title="Sound on/off" aria-label="Sound on/off">🔊</button>
 <button id="menuBtn" class="pill">Menu</button>
 <div id="coach">Tap a lane on the line, drag back, release to kick.</div>
 
@@ -151,9 +154,9 @@
 
   <div class="label">Difficulty</div>
   <div class="seg" id="diffSeg">
-    <button data-d="0.30">Casual</button>
-    <button data-d="0.16" class="on">Club</button>
-    <button data-d="0.07">Pro</button>
+    <button data-d="0.30" data-theme="casual">Casual</button>
+    <button data-d="0.16" data-theme="club" class="on">Club</button>
+    <button data-d="0.07" data-theme="pro">Pro</button>
   </div>
 
   <button class="btn" id="playBtn">Kick Off ⚽</button>
@@ -205,10 +208,12 @@
   const LIGHT = {x:-0.45, y:-0.62};        // light from top-left (for shadows)
 
   let scale = 1, ox = 0, oy = 0;
+  let VW = 0, VH = 0;                       // viewport size (CSS px) for the backdrop
   let T = 0;                                // running time (s) for animations
+  let clackBudget = 4;                      // cap simultaneous ball-clicks per frame
 
   const G = {
-    mode:'ai', target:12, aiErr:0.16,
+    mode:'ai', target:12, aiErr:0.16, theme:'club',
     nameA:'You', nameB:'Bocci',
     scoreA:0, scoreB:0, frame:1,
     balls:[], pallina:null,
@@ -222,6 +227,7 @@
   // ---------- geometry / fit ----------
   function resize(){
     const vw = window.innerWidth, vh = window.innerHeight;
+    VW = vw; VH = vh;
     const dpr = Math.min(window.devicePixelRatio||1, 2.5);
     cv.width = vw*dpr; cv.height = vh*dpr;
     cv.style.width = vw+'px'; cv.style.height = vh+'px';
@@ -257,7 +263,7 @@
     document.getElementById('menuBtn').classList.add('show');
   }
   function newFrame(){
-    G.balls=[]; G.leftA=4; G.leftB=4; G.activeBall=null; parts.length=0;
+    G.balls=[]; G.leftA=4; G.leftB=4; G.activeBall=null; parts.length=0; conf.length=0;
     for(let i=0;i<4;i++){ G.balls.push(makeBall('A')); G.balls.push(makeBall('B')); }
     G.pallina={ x:W/2, y:KICK_Y, vx:0, vy:0, r:PALL_R, spin:0, loft:0, squash:0, sang:0, trail:[] };
     const ang=-Math.PI/2+(Math.random()-0.5)*0.7, pw=17+Math.random()*6;
@@ -394,7 +400,7 @@
         const imp=-(1+BALL_BOUNCE)*vn/(1/ma+1/mb), ix=imp*nx, iy=imp*ny;
         a.vx-=ix/ma; a.vy-=iy/ma; b.vx+=ix/mb; b.vy+=iy/mb;
         const f=Math.min(1,Math.abs(vn)/14);
-        sfxClack(f);
+        if(f>0.1 && clackBudget>0){ sfxClack(f); clackBudget--; }
         const cx=a.x+nx*a.r, cy=a.y+ny*a.r;
         spawnPuff(cx,cy,f); a.squash=b.squash=Math.min(.5,f*.5);
         a.sang=Math.atan2(ny,nx); b.sang=a.sang;
@@ -439,6 +445,7 @@
   function loop(now){
     const dt=Math.min(0.05,(now-last)/1000); last=now; T=now/1000;
     if(wallCooldown>0) wallCooldown--;
+    clackBudget=4;
 
     if(G.phase==='pallina'){
       physics(dt);
@@ -465,6 +472,8 @@
     }
     if(G.activeBall){ G.activeBall.loft*=0.92; }
     updateParticles();
+    let motion=0; for(const o of all) motion+=speed(o);
+    updateRoll(Math.min(1, motion/42));
     shake*=0.86; if(shake<0.2) shake=0;
 
     draw();
@@ -475,16 +484,17 @@
   function draw(){
     ctx.save();
     ctx.clearRect(0,0,cv.width,cv.height);
+    drawBackdrop();                          // themed backdrop fills the whole viewport
     let sx=ox, sy=oy;
     if(shake>0){ sx+=(Math.random()-0.5)*shake*scale; sy+=(Math.random()-0.5)*shake*scale; }
     ctx.translate(sx,sy); ctx.scale(scale,scale);
 
-    if(courtCanvas) ctx.drawImage(courtCanvas,0,0,W,H);
+    // clip everything to the court so balls / dust / confetti can't spill into the backdrop
+    ctx.save();
+    rr(ctx,0,0,W,H,26); ctx.clip();
 
-    if(G.phase!=='menu'){
-      drawKickZone();
-      drawMeasures();
-    }
+    if(courtCanvas) ctx.drawImage(courtCanvas,0,0,W,H);
+    if(G.phase!=='menu'){ drawKickZone(); drawMeasures(); }
     // shadows first (so balls sit above all shadows)
     for(const b of G.balls){ if(b.live) drawShadow(b); }
     if(G.activeBall) drawShadow(G.activeBall);
@@ -496,12 +506,46 @@
     if(G.pallina) drawPallina(G.pallina);
     for(const b of G.balls){ if(b.live) drawBall(b); }
     if(G.activeBall) drawBall(G.activeBall, true);
-
     if(G.aiming && G.activeBall) drawAim();
-
     drawParticles();
     drawConfetti();
-    ctx.restore();
+
+    ctx.restore();                           // end court clip
+    ctx.restore();                           // end frame
+  }
+
+  // --- difficulty-themed backdrop (drawn in screen space behind the court) ---
+  function drawBackdrop(){
+    const w=VW, h=VH;
+    if(G.theme==='casual'){
+      // sunny backyard — warm, relaxed
+      const g=ctx.createLinearGradient(0,0,0,h);
+      g.addColorStop(0,'#3a6b4c'); g.addColorStop(.5,'#274d35'); g.addColorStop(1,'#16301f');
+      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+      const sun=ctx.createRadialGradient(w*0.5,-h*0.12,20, w*0.5,-h*0.12,h*0.7);
+      sun.addColorStop(0,'rgba(255,232,160,.34)'); sun.addColorStop(1,'rgba(255,232,160,0)');
+      ctx.fillStyle=sun; ctx.fillRect(0,0,w,h);
+    } else if(G.theme==='pro'){
+      // stadium night — dramatic floodlights + deep dark
+      ctx.fillStyle='#04100a'; ctx.fillRect(0,0,w,h);
+      for(const fx of [0.18,0.82]){
+        const fl=ctx.createRadialGradient(w*fx,-h*0.1,10, w*fx,h*0.35,h*0.9);
+        fl.addColorStop(0,'rgba(180,210,235,.20)'); fl.addColorStop(.5,'rgba(120,150,180,.07)'); fl.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=fl; ctx.fillRect(0,0,w,h);
+      }
+      // slow drifting light motes
+      if(!REDUCE){ ctx.fillStyle='rgba(200,220,240,.10)';
+        for(let i=0;i<9;i++){ const mx=(i*97+ (T*9)%w)%w, my=(i*61+ T*6 + i*i*13)%h;
+          ctx.beginPath(); ctx.arc(mx,my,1.6,0,7); ctx.fill(); } }
+      const vg=ctx.createRadialGradient(w/2,h/2,h*0.2, w/2,h/2,h*0.75);
+      vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.55)');
+      ctx.fillStyle=vg; ctx.fillRect(0,0,w,h);
+    } else {
+      // club (default) — classic evening pitch
+      const g=ctx.createRadialGradient(w/2,-h*0.1,30, w/2,h*0.4,h*0.95);
+      g.addColorStop(0,'#163f30'); g.addColorStop(.6,'#0a1f17'); g.addColorStop(1,'#050d09');
+      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+    }
   }
 
   // --- pre-rendered 3D court (wooden bocce surround + lit sunken turf) ---
@@ -796,30 +840,91 @@
   }
   function show(id,on){ document.getElementById(id).classList.toggle('hidden',!on); }
 
-  // ---------- audio (WebAudio, no assets) ----------
-  let AC=null;
-  function ac(){ if(!AC){ try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){} } return AC; }
-  function tone(f,dur,type,vol,slideTo){
-    const a=ac(); if(!a) return;
+  // ---------- audio engine (procedural WebAudio — realistic, no assets) ----------
+  // Impacts are synthesized as a sharp noise transient + inharmonic resonant
+  // modes (the "tock"), velocity-scaled in pitch/brightness/volume — like two
+  // hard balls clicking (billiards/bocce). Walls get a dull low-passed thud.
+  let AC=null, master=null, NB=null, muted=false;
+  let rollSrc=null, rollFilter=null, rollGain=null;
+  try{ muted = localStorage.getItem('sb_mute')==='1'; }catch(e){}
+  function ac(){
+    if(!AC){ try{
+      AC=new (window.AudioContext||window.webkitAudioContext)();
+      master=AC.createGain(); master.gain.value=muted?0:0.65; master.connect(AC.destination);
+    }catch(e){} }
+    if(AC && AC.state==='suspended') AC.resume();
+    return AC;
+  }
+  function noiseBuf(){ const a=ac(); if(!a) return null;
+    if(!NB){ NB=a.createBuffer(1,a.sampleRate,a.sampleRate); const d=NB.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1; }
+    return NB; }
+  function partial(freq,dur,vol,type){          // one decaying resonant mode
+    const a=ac(); if(!a||!master) return; const t=a.currentTime;
     const o=a.createOscillator(), g=a.createGain();
-    o.type=type||'sine'; o.frequency.value=f;
-    if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,a.currentTime+dur);
-    g.gain.value=vol||0.2; g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+dur);
-    o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+dur);
+    o.type=type||'sine'; o.frequency.value=freq;
+    g.gain.setValueAtTime(Math.max(0.0001,vol),t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+0.02);
   }
-  function noise(dur,vol){
-    const a=ac(); if(!a) return;
-    const n=a.sampleRate*dur, buf=a.createBuffer(1,n,a.sampleRate), d=buf.getChannelData(0);
-    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
-    const src=a.createBufferSource(); src.buffer=buf;
-    const g=a.createGain(); g.gain.value=vol; g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+dur);
-    const f=a.createBiquadFilter(); f.type='lowpass'; f.frequency.value=900;
-    src.connect(f); f.connect(g); g.connect(a.destination); src.start();
+  function noiseBurst(dur,vol,type,freq,q){      // filtered noise transient
+    const a=ac(); if(!a||!master) return; const t=a.currentTime;
+    const src=a.createBufferSource(); src.buffer=noiseBuf(); src.loop=true;
+    const f=a.createBiquadFilter(); f.type=type||'bandpass'; f.frequency.value=freq||2000; if(q) f.Q.value=q;
+    const g=a.createGain(); g.gain.setValueAtTime(Math.max(0.0001,vol),t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    src.connect(f); f.connect(g); g.connect(master); src.start(t); src.stop(t+dur+0.03);
   }
-  function sfxKick(p){ tone(140,0.16,'triangle',0.32,55); tone(380,0.05,'square',0.10); noise(0.12,0.12+0.12*p); }
-  function sfxClack(v){ tone(240+Math.random()*150,0.07,'square',0.05+0.2*v); tone(120,0.05,'sine',0.06*v); }
-  function sfxThud(v){ tone(90,0.12,'sine',0.18*v,60); noise(0.08,0.1*v); }
-  function sfxWhistle(){ tone(880,0.16,'sine',0.18,1500); setTimeout(()=>tone(1320,0.18,'sine',0.16,1200),120); }
+  // ball ↔ ball: crisp billiard/bocce click, v in [0,1] = impact hardness
+  function sfxClack(v){
+    if(!ac()) return; v=Math.max(0.05,Math.min(1,v));
+    const base=820+760*v, vol=0.10+0.42*v;
+    noiseBurst(0.012, vol*0.85, 'bandpass', 2500+2600*v, 0.8);   // sharp tick
+    partial(base,      0.05+0.02*v, vol,      'sine');           // inharmonic modal "tock"
+    partial(base*1.84, 0.04,        vol*0.55, 'sine');
+    partial(base*2.74, 0.028,       vol*0.30, 'triangle');
+    partial(base*0.5,  0.05,        vol*0.22, 'sine');           // woody body (bocce)
+  }
+  // ball ↔ wall: dull, low, damped thud
+  function sfxThud(v){
+    if(!ac()) return; v=Math.max(0.05,Math.min(1,v));
+    const vol=0.10+0.26*v;
+    partial(95+38*v, 0.16, vol, 'sine');
+    noiseBurst(0.10, vol*0.5, 'lowpass', 360, 0.6);
+  }
+  // foot ↔ ball: soft thump (no harsh buzz)
+  function sfxKick(p){
+    if(!ac()) return;
+    partial(120, 0.10, 0.20, 'sine'); partial(300, 0.04, 0.09, 'triangle');
+    noiseBurst(0.09, 0.14+0.14*p, 'lowpass', 700+500*p, 0.7);
+  }
+  function sfxWhistle(){
+    if(!ac()) return;
+    partial(1760,0.18,0.15,'sine'); noiseBurst(0.18,0.045,'bandpass',1900,3);
+    setTimeout(()=>{ partial(2280,0.22,0.13,'sine'); noiseBurst(0.2,0.04,'bandpass',2400,3); },130);
+  }
+  function sfxCheer(){                            // soft crowd swell on a win
+    const a=ac(); if(!a||!master) return; const t=a.currentTime;
+    const src=a.createBufferSource(); src.buffer=noiseBuf(); src.loop=true;
+    const f=a.createBiquadFilter(); f.type='bandpass'; f.frequency.value=1000; f.Q.value=0.5;
+    const g=a.createGain(); g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(0.16,t+0.35); g.gain.exponentialRampToValueAtTime(0.0001,t+1.6);
+    src.connect(f); f.connect(g); g.connect(master); src.start(t); src.stop(t+1.7);
+  }
+  // subtle gravel-roll bed while balls move (level 0..1)
+  function ensureRoll(){
+    const a=ac(); if(!a||!master||rollSrc) return;
+    rollSrc=a.createBufferSource(); rollSrc.buffer=noiseBuf(); rollSrc.loop=true;
+    rollFilter=a.createBiquadFilter(); rollFilter.type='lowpass'; rollFilter.frequency.value=300;
+    rollGain=a.createGain(); rollGain.gain.value=0;
+    rollSrc.connect(rollFilter); rollFilter.connect(rollGain); rollGain.connect(master); rollSrc.start();
+  }
+  function updateRoll(level){
+    if(!AC) return; ensureRoll(); if(!rollGain) return;
+    rollGain.gain.setTargetAtTime(Math.min(0.045, level*0.045), AC.currentTime, 0.08);
+    if(rollFilter) rollFilter.frequency.setTargetAtTime(260+level*520, AC.currentTime, 0.1);
+  }
+  function setMuted(m){ muted=m; try{localStorage.setItem('sb_mute',m?'1':'0');}catch(e){}
+    if(master) master.gain.value=m?0:0.65;
+    const btn=document.getElementById('muteBtn'); if(btn) btn.textContent=m?'🔇':'🔊'; }
 
   // ---------- confetti / bursts ----------
   const conf=[];
@@ -833,7 +938,7 @@
   function confettiStorm(){
     const c=['#19b06e','#c43a3d','#ffd35a','#8ff0bf','#fff'];
     for(let i=0;i<(REDUCE?40:190);i++) conf.push(spark(Math.random()*W,-20,c,true));
-    sfxWhistle();
+    sfxWhistle(); sfxCheer();
   }
   function spark(x,y,cols,rain){
     return { x,y, vx:(Math.random()-0.5)*(rain?4:11), vy:rain?2+Math.random()*4:-(4+Math.random()*10),
@@ -858,10 +963,13 @@
   }
   segWire('modeSeg', b=>G.mode=b.dataset.mode);
   segWire('targetSeg', b=>G.target=+b.dataset.t);
-  segWire('diffSeg', b=>G.aiErr=+b.dataset.d);
+  segWire('diffSeg', b=>{ G.aiErr=+b.dataset.d; G.theme=b.dataset.theme; });
   document.getElementById('playBtn').onclick=()=>{
     ac(); G.nameA=G.mode==='pvp'?'Green':'You'; G.nameB=G.mode==='pvp'?'Maroon':'Bocci'; startMatch();
   };
+  const muteBtn=document.getElementById('muteBtn');
+  muteBtn.textContent = muted?'🔇':'🔊';
+  muteBtn.onclick=()=>{ ac(); setMuted(!muted); };
   document.getElementById('nextFrameBtn').onclick=()=>{ G.frame++; show('frameOver',false); newFrame(); };
   document.getElementById('rematchBtn').onclick=()=>{ show('matchOver',false); startMatch(); };
   document.getElementById('menuBtn').onclick=()=>{
