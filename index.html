@@ -98,9 +98,12 @@
   #frameNo{font-size:11px;letter-spacing:.16em;text-transform:uppercase;opacity:.6;font-weight:700;}
   #turn{font-size:14px;font-weight:800;background:rgba(6,18,13,.6);border-radius:999px;padding:6px 15px;
     border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(7px);transition:.2s;}
-  #turn.you{color:#06120d;background:linear-gradient(180deg,#9ff0c2,#27c47e);border-color:transparent;
-    animation:turnGlow 1.8s ease-in-out infinite;}
-  @keyframes turnGlow{0%,100%{box-shadow:0 0 0 rgba(40,220,140,0)}50%{box-shadow:0 0 18px rgba(40,220,140,.6)}}
+  #turn.teamA{color:#06120d;background:linear-gradient(180deg,#9ff0c2,#27c47e);border-color:transparent;
+    animation:glowA 1.8s ease-in-out infinite;}
+  #turn.teamB{color:#fff;background:linear-gradient(180deg,#e9787a,#9c2f2d);border-color:transparent;
+    animation:glowB 1.8s ease-in-out infinite;}
+  @keyframes glowA{0%,100%{box-shadow:0 0 0 rgba(40,220,140,0)}50%{box-shadow:0 0 18px rgba(40,220,140,.6)}}
+  @keyframes glowB{0%,100%{box-shadow:0 0 0 rgba(210,80,80,0)}50%{box-shadow:0 0 18px rgba(210,80,80,.6)}}
   #coach{position:fixed;left:50%;transform:translateX(-50%);bottom:max(18px,env(safe-area-inset-bottom));
     z-index:10;background:rgba(6,18,13,.74);border:1px solid rgba(255,255,255,.14);border-radius:14px;
     padding:10px 16px;font-size:14px;max-width:86vw;text-align:center;
@@ -246,7 +249,8 @@
   // ---------- ball helpers ----------
   function makeBall(team){
     return { x:0,y:0,vx:0,vy:0,r:BALL_R,team,live:false,
-             spin:Math.random()*6.28, loft:0, squash:0, sang:0, trail:[] };
+             spin:Math.random()*6.28, loft:0, squash:0, sang:0, trail:[], wallCd:0,
+             ori:randOri() };
   }
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   const speed=o=>Math.hypot(o.vx,o.vy);
@@ -266,7 +270,7 @@
   function newFrame(){
     G.balls=[]; G.leftA=4; G.leftB=4; G.activeBall=null; parts.length=0; conf.length=0;
     for(let i=0;i<4;i++){ G.balls.push(makeBall('A')); G.balls.push(makeBall('B')); }
-    G.pallina={ x:W/2, y:KICK_Y, vx:0, vy:0, r:PALL_R, spin:0, loft:0, squash:0, sang:0, trail:[] };
+    G.pallina={ x:W/2, y:KICK_Y, vx:0, vy:0, r:PALL_R, spin:0, loft:0, squash:0, sang:0, trail:[], wallCd:0, ori:randOri() };
     const ang=-Math.PI/2+(Math.random()-0.5)*0.7, pw=17+Math.random()*6;
     G.pallina.vx=Math.cos(ang)*pw; G.pallina.vy=Math.sin(ang)*pw;
     G.pallina.loft=0.8; spawnDust(G.pallina.x,G.pallina.y,ang,6,0.5);
@@ -373,10 +377,11 @@
     const objs=[G.pallina, ...G.balls.filter(b=>b.live)];
     for(const o of objs){
       o.x+=o.vx; o.y+=o.vy; o.vx*=FRICTION; o.vy*=FRICTION;
-      if(o.x<WALL+o.r){ o.x=WALL+o.r; o.vx=-o.vx*WALL_BOUNCE; wallFx(o); }
-      if(o.x>W-WALL-o.r){ o.x=W-WALL-o.r; o.vx=-o.vx*WALL_BOUNCE; wallFx(o); }
-      if(o.y<WALL+o.r){ o.y=WALL+o.r; o.vy=-o.vy*WALL_BOUNCE; wallFx(o); }
-      if(o.y>H-WALL-o.r){ o.y=H-WALL-o.r; o.vy=-o.vy*WALL_BOUNCE; wallFx(o); }
+      if(o.wallCd>0) o.wallCd--;
+      if(o.x<WALL+o.r){ wallHit(o,Math.abs(o.vx)); o.x=WALL+o.r; o.vx=-o.vx*WALL_BOUNCE; }
+      else if(o.x>W-WALL-o.r){ wallHit(o,Math.abs(o.vx)); o.x=W-WALL-o.r; o.vx=-o.vx*WALL_BOUNCE; }
+      if(o.y<WALL+o.r){ wallHit(o,Math.abs(o.vy)); o.y=WALL+o.r; o.vy=-o.vy*WALL_BOUNCE; }
+      else if(o.y>H-WALL-o.r){ wallHit(o,Math.abs(o.vy)); o.y=H-WALL-o.r; o.vy=-o.vy*WALL_BOUNCE; }
       if(Math.abs(o.vx)<STOP_V) o.vx=0;
       if(Math.abs(o.vy)<STOP_V) o.vy=0;
       o.spin += (Math.abs(o.vx)+Math.abs(o.vy))*0.011;
@@ -384,9 +389,13 @@
     for(let i=0;i<objs.length;i++)
       for(let j=i+1;j<objs.length;j++) collide(objs[i],objs[j]);
   }
-  let wallCooldown=0;
-  function wallFx(o){
-    if(speed(o)>2.2 && wallCooldown<=0){ sfxThud(Math.min(1,speed(o)/12)); addShake(speed(o)*0.12); wallCooldown=4; }
+  // every wall impact rings (per-object debounce so a single hit fires once); impact-scaled
+  function wallHit(o,imp){
+    if(imp<0.5 || o.wallCd>0) return;
+    o.wallCd=5;
+    const f=Math.min(1, imp/12);
+    (o.r===PALL_R) ? sfxPallina(f*0.85) : sfxThud(f);
+    if(f>0.4) addShake(f*3);
   }
   function collide(a,b){
     const dx=b.x-a.x, dy=b.y-a.y; let d=Math.hypot(dx,dy); const min=a.r+b.r;
@@ -401,7 +410,10 @@
         const imp=-(1+BALL_BOUNCE)*vn/(1/ma+1/mb), ix=imp*nx, iy=imp*ny;
         a.vx-=ix/ma; a.vy-=iy/ma; b.vx+=ix/mb; b.vy+=iy/mb;
         const f=Math.min(1,Math.abs(vn)/14);
-        if(f>0.1 && clackBudget>0){ sfxClack(f); clackBudget--; }
+        if(f>0.04 && clackBudget>0){
+          ((a.r===PALL_R)||(b.r===PALL_R)) ? sfxPallina(f) : sfxClack(f);
+          clackBudget--;
+        }
         const cx=a.x+nx*a.r, cy=a.y+ny*a.r;
         spawnPuff(cx,cy,f); a.squash=b.squash=Math.min(.5,f*.5);
         a.sang=Math.atan2(ny,nx); b.sang=a.sang;
@@ -445,8 +457,7 @@
   let last=performance.now();
   function loop(now){
     const dt=Math.min(0.05,(now-last)/1000); last=now; T=now/1000;
-    if(wallCooldown>0) wallCooldown--;
-    clackBudget=4;
+    clackBudget=16;                          // effectively: every collision rings
 
     if(G.phase==='pallina'){
       physics(dt);
@@ -466,7 +477,7 @@
     // visual decay + trails
     const all=[G.pallina,...G.balls].filter(Boolean);
     for(const o of all){
-      o.loft*=0.92; o.squash*=0.86;
+      o.loft*=0.92; o.squash*=0.86; rollOri(o);
       const moving2 = speed(o)>0.4;
       if(moving2){ o.trail.push({x:o.x,y:o.y}); if(o.trail.length>9) o.trail.shift(); }
       else if(o.trail.length){ o.trail.shift(); }
@@ -648,9 +659,9 @@
   }
 
   function drawShadow(b){
-    const lift=b.loft*14;                  // higher = bigger, softer, more offset
+    const depth=depthOf(b.y), lift=b.loft*14;  // higher = bigger, softer, more offset
     const sx=b.x - LIGHT.x*(6+lift), sy=b.y - LIGHT.y*(6+lift);
-    const rx=b.r*(0.95+lift*0.04), ry=b.r*(0.55+lift*0.02);
+    const rx=b.r*depth*(0.95+lift*0.04), ry=b.r*depth*(0.55+lift*0.02);
     const a=0.32*(1-b.loft*0.5);
     const g=ctx.createRadialGradient(sx,sy,1,sx,sy,rx*1.2);
     g.addColorStop(0,`rgba(0,0,0,${a})`); g.addColorStop(1,'rgba(0,0,0,0)');
@@ -672,58 +683,81 @@
     ctx.restore();
   }
 
-  function pentagon(o,cx,cy,rad,rot){
-    o.beginPath();
-    for(let k=0;k<5;k++){ const a=rot+k*1.2566; const x=cx+Math.cos(a)*rad, y=cy+Math.sin(a)*rad;
-      k?o.lineTo(x,y):o.moveTo(x,y); }
-    o.closePath();
+  // --- soccer-ball 3D math: 12 pentagon centers = icosahedron vertices ---
+  const ICO12 = (() => {
+    const p=(1+Math.sqrt(5))/2;
+    const v=[[0,1,p],[0,1,-p],[0,-1,p],[0,-1,-p],[1,p,0],[1,-p,0],
+             [-1,p,0],[-1,-p,0],[p,0,1],[p,0,-1],[-p,0,1],[-p,0,-1]];
+    return v.map(a=>{ const L=Math.hypot(a[0],a[1],a[2]); return [a[0]/L,a[1]/L,a[2]/L]; });
+  })();
+  function mat3mul(a,b){ const r=new Array(9);
+    for(let i=0;i<3;i++) for(let j=0;j<3;j++){ let s=0;
+      for(let k=0;k<3;k++) s+=a[i*3+k]*b[k*3+j]; r[i*3+j]=s; } return r; }
+  function axisRot(ax,ay,az,ang){ const c=Math.cos(ang),s=Math.sin(ang),t=1-c;
+    return [t*ax*ax+c,    t*ax*ay-s*az, t*ax*az+s*ay,
+            t*ax*ay+s*az, t*ay*ay+c,    t*ay*az-s*ax,
+            t*ax*az-s*ay, t*ay*az+s*ax, t*az*az+c]; }
+  function applyMat(m,v){ return [m[0]*v[0]+m[1]*v[1]+m[2]*v[2],
+    m[3]*v[0]+m[4]*v[1]+m[5]*v[2], m[6]*v[0]+m[7]*v[1]+m[8]*v[2]]; }
+  function randOri(){
+    let m=mat3mul(axisRot(1,0,0,Math.random()*6.28),[1,0,0,0,1,0,0,0,1]);
+    m=mat3mul(axisRot(0,1,0,Math.random()*6.28),m);
+    return mat3mul(axisRot(0,0,1,Math.random()*6.28),m);
   }
+  function rollOri(o){                         // roll the ball from its velocity
+    if(!o.ori) return; const sp=Math.hypot(o.vx,o.vy); if(sp<0.04) return;
+    const inv=1/sp; o.ori = mat3mul(axisRot(-o.vy*inv, o.vx*inv, 0, sp/o.r), o.ori);
+  }
+  const depthOf = y => 0.9 + 0.22*((y-WALL)/(H-2*WALL));  // perspective: lower (closer) = bigger
 
   function drawBall(b, ghost){
     const A=b.team==='A';
-    const lift=b.loft*8;
-    const cx=b.x, cy=b.y-lift;            // visual lift (loft) — physics stays grounded
-    const r=b.r*(1+b.loft*0.06);
-    const base=A?'#1fbf72':'#d24a47', mid=A?'#138a4f':'#9c2f2d', dk=A?'#0a4d31':'#5d1715';
-    const panel=A?'#0c3f2a':'#491113', seam=A?'rgba(210,255,230,.6)':'rgba(255,220,220,.6)';
+    const depth=depthOf(b.y), lift=b.loft*9;
+    const cx=b.x, cy=b.y-lift;                  // visual lift (loft); physics stays grounded
+    const r=b.r*depth*(1+b.loft*0.05);
+    const base=A?'#22c878':'#dc5350', mid=A?'#138a4f':'#9c2f2d', dk=A?'#073b25':'#4a1311';
+    const seam=A?'rgba(190,255,220,.5)':'rgba(255,205,205,.5)';
 
     ctx.save();
     if(ghost) ctx.globalAlpha=0.55;
-    // squash transform
     if(b.squash>0.02){ ctx.translate(cx,cy); ctx.rotate(b.sang);
       ctx.scale(1-b.squash*0.5, 1+b.squash*0.35); ctx.rotate(-b.sang); ctx.translate(-cx,-cy); }
 
-    // clip to sphere
     ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.clip();
-    // 3D shaded base (light from top-left)
-    const g=ctx.createRadialGradient(cx+LIGHT.x*r*0.7, cy+LIGHT.y*r*0.7, r*0.1, cx,cy,r);
-    g.addColorStop(0,base); g.addColorStop(0.55,mid); g.addColorStop(1,dk);
+    // 3D shaded base — light from top-left
+    const g=ctx.createRadialGradient(cx+LIGHT.x*r*0.6, cy+LIGHT.y*r*0.6, r*0.05, cx,cy,r*1.05);
+    g.addColorStop(0,base); g.addColorStop(0.5,mid); g.addColorStop(1,dk);
     ctx.fillStyle=g; ctx.fillRect(cx-r,cy-r,2*r,2*r);
-    // rotating soccer panels
-    ctx.save(); ctx.translate(cx,cy); ctx.rotate(b.spin);
-    ctx.fillStyle=panel; ctx.strokeStyle=seam; ctx.lineWidth=1.4; ctx.lineJoin='round';
-    pentagon(ctx,0,0,r*0.34,Math.PI/10); ctx.fill(); ctx.stroke();
-    for(let k=0;k<5;k++){ const a=k*1.2566 - Math.PI/2;
-      const px=Math.cos(a)*r*0.62, py=Math.sin(a)*r*0.62;
-      pentagon(ctx,px,py,r*0.24,a+0.3); ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(Math.cos(a)*r*0.34,Math.sin(a)*r*0.34);
-      ctx.lineTo(px,py); ctx.stroke();
+    // pentagons mapped onto the sphere surface — they roll as the ball moves
+    for(const vv of ICO12){
+      const p=applyMat(b.ori, vv), pz=p[2];
+      if(pz<=0.12) continue;                     // skip the far hemisphere
+      const sx=cx+p[0]*r, sy=cy+p[1]*r, ang=Math.atan2(p[1],p[0]), pr=r*0.33;
+      ctx.save();
+      ctx.translate(sx,sy); ctx.rotate(ang); ctx.scale(Math.max(0.16,pz),1);  // foreshorten radially
+      ctx.globalAlpha=(ghost?0.55:1)*Math.min(1,(pz-0.12)*4);
+      ctx.beginPath();
+      for(let k=0;k<5;k++){ const a=k*1.2566-Math.PI/2, x=Math.cos(a)*pr, y=Math.sin(a)*pr; k?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+      ctx.closePath(); ctx.fillStyle='#0b0e11'; ctx.fill();
+      ctx.lineWidth=1.1; ctx.strokeStyle=seam; ctx.stroke();
+      ctx.restore();
     }
-    ctx.restore();
-    // ambient occlusion at lower-right rim
-    const ao=ctx.createRadialGradient(cx-LIGHT.x*r, cy-LIGHT.y*r, r*0.3, cx-LIGHT.x*r, cy-LIGHT.y*r, r*1.3);
-    ao.addColorStop(0,'rgba(0,0,0,0)'); ao.addColorStop(1,'rgba(0,0,0,.45)');
+    ctx.globalAlpha=ghost?0.55:1;
+    // ambient occlusion on the shadow side
+    const ao=ctx.createRadialGradient(cx-LIGHT.x*r, cy-LIGHT.y*r, r*0.25, cx-LIGHT.x*r, cy-LIGHT.y*r, r*1.35);
+    ao.addColorStop(0,'rgba(0,0,0,0)'); ao.addColorStop(1,'rgba(0,0,0,.5)');
     ctx.fillStyle=ao; ctx.fillRect(cx-r,cy-r,2*r,2*r);
-    // specular highlight (fixed in screen space)
-    const hl=ctx.createRadialGradient(cx+LIGHT.x*r*0.55, cy+LIGHT.y*r*0.55, 0.5, cx+LIGHT.x*r*0.55, cy+LIGHT.y*r*0.55, r*0.7);
-    hl.addColorStop(0,'rgba(255,255,255,.8)'); hl.addColorStop(.3,'rgba(255,255,255,.25)'); hl.addColorStop(1,'rgba(255,255,255,0)');
+    // tight glossy specular (fixed in light direction)
+    const hx=cx+LIGHT.x*r*0.5, hy=cy+LIGHT.y*r*0.5;
+    const hl=ctx.createRadialGradient(hx,hy,0.5,hx,hy,r*0.55);
+    hl.addColorStop(0,'rgba(255,255,255,.95)'); hl.addColorStop(.25,'rgba(255,255,255,.4)'); hl.addColorStop(1,'rgba(255,255,255,0)');
     ctx.fillStyle=hl; ctx.fillRect(cx-r,cy-r,2*r,2*r);
     ctx.restore(); // unclip
-    // crisp rim + thin light wrap on shadow side
-    ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.lineWidth=1.6;
-    ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx,cy,r-0.8, -0.4, 1.7); ctx.lineWidth=1.4;
-    ctx.strokeStyle=A?'rgba(150,255,200,.35)':'rgba(255,180,180,.35)'; ctx.stroke();
+    // rim + light wrap
+    ctx.globalAlpha=ghost?0.55:1;
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.lineWidth=1.6; ctx.strokeStyle='rgba(0,0,0,.4)'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx,cy,r-0.8,-0.5,1.6); ctx.lineWidth=1.3;
+    ctx.strokeStyle=A?'rgba(150,255,200,.4)':'rgba(255,180,180,.4)'; ctx.stroke();
     ctx.restore();
   }
 
@@ -828,8 +862,9 @@
     const turnEl=document.getElementById('turn');
     turnEl.textContent = G.phase==='pallina' ? 'Pallina out…'
       : (G.mode==='ai'&&G.turn==='B' ? 'Bocci kicks' : `${t}'s kick`);
-    const yourTurn = G.phase==='aim' && !(G.mode==='ai'&&G.turn==='B');
-    turnEl.classList.toggle('you', yourTurn);
+    const aiming = G.phase==='aim';
+    turnEl.classList.toggle('teamA', aiming && G.turn==='A');
+    turnEl.classList.toggle('teamB', aiming && G.turn==='B');
     document.getElementById('scoreA').classList.toggle('active', G.turn==='A' && G.phase==='aim');
     document.getElementById('scoreB').classList.toggle('active', G.turn==='B' && G.phase==='aim');
   }
@@ -891,6 +926,14 @@
     partial(78+32*v, 0.19, vol, 'sine');                         // deep dull body
     partial(148+36*v,0.07, vol*0.38,'sine');                     // soft board knock
     noiseBurst(0.13, vol*0.5, 'lowpass', 270, 0.6);              // muffled wood thud
+  }
+  // anything ↔ pallina (the little jack): lighter, higher, shorter "tok"
+  function sfxPallina(v){
+    if(!ac()) return; v=Math.max(0.05,Math.min(1,v));
+    const base=880+680*v, vol=0.09+0.30*v;
+    noiseBurst(0.009, vol*0.7, 'bandpass', 3000+2400*v, 0.8);    // light tick
+    partial(base,     0.035, vol,      'sine');
+    partial(base*1.9, 0.024, vol*0.45, 'triangle');
   }
   // foot ↔ ball: soft thump (no harsh buzz)
   function sfxKick(p){
