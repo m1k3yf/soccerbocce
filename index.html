@@ -261,6 +261,7 @@
     prevA=0; prevB=0; hud(); newFrame();
     show('menu',false); show('frameOver',false); show('matchOver',false);
     document.getElementById('menuBtn').classList.add('show');
+    ambOn(true);
   }
   function newFrame(){
     G.balls=[]; G.leftA=4; G.leftB=4; G.activeBall=null; parts.length=0; conf.length=0;
@@ -873,22 +874,23 @@
     const g=a.createGain(); g.gain.setValueAtTime(Math.max(0.0001,vol),t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
     src.connect(f); f.connect(g); g.connect(master); src.start(t); src.stop(t+dur+0.03);
   }
-  // ball ↔ ball: crisp billiard/bocce click, v in [0,1] = impact hardness
+  // ball ↔ ball: deep woody bocce "thock" — low body + dark knock, little treble
   function sfxClack(v){
     if(!ac()) return; v=Math.max(0.05,Math.min(1,v));
-    const base=820+760*v, vol=0.10+0.42*v;
-    noiseBurst(0.012, vol*0.85, 'bandpass', 2500+2600*v, 0.8);   // sharp tick
-    partial(base,      0.05+0.02*v, vol,      'sine');           // inharmonic modal "tock"
-    partial(base*1.84, 0.04,        vol*0.55, 'sine');
-    partial(base*2.74, 0.028,       vol*0.30, 'triangle');
-    partial(base*0.5,  0.05,        vol*0.22, 'sine');           // woody body (bocce)
+    const base=330+330*v, vol=0.14+0.44*v;
+    noiseBurst(0.02, vol*0.55, 'lowpass', 950+800*v, 0.6);       // dark knock attack
+    partial(base*0.6,  0.090,        vol*1.0,  'sine');          // low body / thud
+    partial(base,      0.070+0.02*v, vol*0.95, 'sine');          // woody fundamental
+    partial(base*1.78, 0.045,        vol*0.40, 'triangle');      // inharmonic ring
+    partial(base*2.55, 0.028,        vol*0.16, 'sine');          // faint upper edge
   }
-  // ball ↔ wall: dull, low, damped thud
+  // ball ↔ wall: even duller + lower than the thock — muffled "thunk" on the boards
   function sfxThud(v){
     if(!ac()) return; v=Math.max(0.05,Math.min(1,v));
-    const vol=0.10+0.26*v;
-    partial(95+38*v, 0.16, vol, 'sine');
-    noiseBurst(0.10, vol*0.5, 'lowpass', 360, 0.6);
+    const vol=0.10+0.24*v;
+    partial(78+32*v, 0.19, vol, 'sine');                         // deep dull body
+    partial(148+36*v,0.07, vol*0.38,'sine');                     // soft board knock
+    noiseBurst(0.13, vol*0.5, 'lowpass', 270, 0.6);              // muffled wood thud
   }
   // foot ↔ ball: soft thump (no harsh buzz)
   function sfxKick(p){
@@ -896,19 +898,34 @@
     partial(120, 0.10, 0.20, 'sine'); partial(300, 0.04, 0.09, 'triangle');
     noiseBurst(0.09, 0.14+0.14*p, 'lowpass', 700+500*p, 0.7);
   }
-  function sfxWhistle(){
+  function sfxWhistle(){                          // softer, match-end only
     if(!ac()) return;
-    partial(1760,0.18,0.15,'sine'); noiseBurst(0.18,0.045,'bandpass',1900,3);
-    setTimeout(()=>{ partial(2280,0.22,0.13,'sine'); noiseBurst(0.2,0.04,'bandpass',2400,3); },130);
+    partial(1740,0.15,0.085,'sine'); noiseBurst(0.15,0.028,'bandpass',1900,3);
+    setTimeout(()=>{ partial(2260,0.18,0.075,'sine'); noiseBurst(0.16,0.024,'bandpass',2400,3); },130);
   }
   function sfxCheer(){                            // soft crowd swell on a win
     const a=ac(); if(!a||!master) return; const t=a.currentTime;
     const src=a.createBufferSource(); src.buffer=noiseBuf(); src.loop=true;
     const f=a.createBiquadFilter(); f.type='bandpass'; f.frequency.value=1000; f.Q.value=0.5;
     const g=a.createGain(); g.gain.setValueAtTime(0.0001,t);
-    g.gain.exponentialRampToValueAtTime(0.16,t+0.35); g.gain.exponentialRampToValueAtTime(0.0001,t+1.6);
+    g.gain.exponentialRampToValueAtTime(0.10,t+0.4); g.gain.exponentialRampToValueAtTime(0.0001,t+1.6);
     src.connect(f); f.connect(g); g.connect(master); src.start(t); src.stop(t+1.7);
   }
+  // outdoor ambience bed — subtle breeze / distant-park wash under play
+  let ambSrc=null, ambFilter=null, ambGain=null, ambLFO=null, ambLFOGain=null;
+  function ensureAmb(){
+    const a=ac(); if(!a||!master||ambSrc) return;
+    ambSrc=a.createBufferSource(); ambSrc.buffer=noiseBuf(); ambSrc.loop=true;
+    ambFilter=a.createBiquadFilter(); ambFilter.type='lowpass'; ambFilter.frequency.value=470; ambFilter.Q.value=0.4;
+    ambGain=a.createGain(); ambGain.gain.value=0;
+    ambSrc.connect(ambFilter); ambFilter.connect(ambGain); ambGain.connect(master);
+    ambLFO=a.createOscillator(); ambLFO.frequency.value=0.07;        // slow breeze swell
+    ambLFOGain=a.createGain(); ambLFOGain.gain.value=200;
+    ambLFO.connect(ambLFOGain); ambLFOGain.connect(ambFilter.frequency);
+    ambSrc.start(); ambLFO.start();
+  }
+  function ambOn(on){ const a=ac(); if(!a) return; ensureAmb(); if(!ambGain) return;
+    ambGain.gain.setTargetAtTime(on?0.024:0, a.currentTime, 0.7); }
   // subtle gravel-roll bed while balls move (level 0..1)
   function ensureRoll(){
     const a=ac(); if(!a||!master||rollSrc) return;
@@ -919,8 +936,8 @@
   }
   function updateRoll(level){
     if(!AC) return; ensureRoll(); if(!rollGain) return;
-    rollGain.gain.setTargetAtTime(Math.min(0.045, level*0.045), AC.currentTime, 0.08);
-    if(rollFilter) rollFilter.frequency.setTargetAtTime(260+level*520, AC.currentTime, 0.1);
+    rollGain.gain.setTargetAtTime(Math.min(0.09, level*0.11), AC.currentTime, 0.06);
+    if(rollFilter) rollFilter.frequency.setTargetAtTime(300+level*820, AC.currentTime, 0.08);
   }
   function setMuted(m){ muted=m; try{localStorage.setItem('sb_mute',m?'1':'0');}catch(e){}
     if(master) master.gain.value=m?0:0.65;
@@ -933,7 +950,6 @@
     const c=team==='A'?['#19b06e','#8ff0bf','#fff','#ffd35a']:['#c43a3d','#ff9a8b','#fff','#ffd35a'];
     const cb=closestBall()||{x:W/2,y:H/2};
     for(let i=0;i<(REDUCE?20:64);i++) conf.push(spark(cb.x,cb.y,c));
-    sfxWhistle();
   }
   function confettiStorm(){
     const c=['#19b06e','#c43a3d','#ffd35a','#8ff0bf','#fff'];
@@ -974,7 +990,7 @@
   document.getElementById('rematchBtn').onclick=()=>{ show('matchOver',false); startMatch(); };
   document.getElementById('menuBtn').onclick=()=>{
     if(confirm('Quit this match and return to menu?')){
-      document.getElementById('menuBtn').classList.remove('show'); G.phase='menu'; show('menu',true);
+      document.getElementById('menuBtn').classList.remove('show'); G.phase='menu'; show('menu',true); ambOn(false);
     }
   };
   document.getElementById('shareBtn').onclick=async ()=>{
