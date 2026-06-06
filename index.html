@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>SoccerBocce — kick it close</title>
+<meta name="description" content="SoccerBocce: bocce, but you kick soccer balls. Flick your ball closest to the pallina. First to 12 wins. A Mikey Alessandro original." />
+<meta name="theme-color" content="#0b3d2e" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+<!-- Open Graph -->
+<meta property="og:title" content="SoccerBocce — kick it close" />
+<meta property="og:description" content="Bocce, but you kick soccer balls. Flick closest to the pallina. First to 12 wins." />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="og.png" />
+
+<style>
+  :root{
+    --green:#0b3d2e;       /* Team A / field accent */
+    --teamA:#0f7a4f;       /* player balls */
+    --teamA-dk:#0a4d31;
+    --teamB:#7a1f22;       /* opponent balls */
+    --teamB-dk:#4d1214;
+    --pallina:#f4f4ef;
+    --ink:#0c1411;
+    --cream:#f6f3ea;
+    --line:rgba(255,255,255,.5);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:#06120d;color:var(--cream);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overflow:hidden;overscroll-behavior:none;}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+  canvas{display:block;touch-action:none;}
+
+  /* ---- overlays ---- */
+  .overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:18px;padding:28px;text-align:center;z-index:20;
+    background:radial-gradient(120% 120% at 50% 0%, rgba(10,60,42,.92), rgba(4,14,9,.97));
+    backdrop-filter:blur(4px);}
+  .overlay.hidden{display:none;}
+  h1{font-size:clamp(34px,9vw,66px);margin:0;letter-spacing:-.02em;font-weight:800;
+    background:linear-gradient(90deg,#fff,#7be0ad);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .tag{opacity:.8;margin:-6px 0 6px;font-size:15px;max-width:34ch;line-height:1.45;}
+  .ball-emoji{font-size:46px;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5));}
+  .btn{appearance:none;border:none;cursor:pointer;font-weight:700;font-size:17px;
+    padding:15px 26px;border-radius:16px;color:#06120d;background:linear-gradient(180deg,#8ff0bf,#34c987);
+    box-shadow:0 8px 20px rgba(20,160,100,.35);transition:transform .08s ease;min-width:230px;}
+  .btn:active{transform:translateY(2px) scale(.98);}
+  .btn.secondary{background:rgba(255,255,255,.1);color:var(--cream);box-shadow:none;border:1px solid rgba(255,255,255,.18);}
+  .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;}
+  .seg{display:inline-flex;background:rgba(255,255,255,.08);border-radius:14px;padding:5px;gap:5px;border:1px solid rgba(255,255,255,.12);}
+  .seg button{appearance:none;border:none;background:transparent;color:var(--cream);
+    font-weight:700;font-size:15px;padding:9px 16px;border-radius:10px;cursor:pointer;opacity:.62;}
+  .seg button.on{background:linear-gradient(180deg,#8ff0bf,#34c987);color:#06120d;opacity:1;}
+  .label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.55;margin-bottom:-6px;}
+  .credit{position:fixed;bottom:14px;font-size:12px;opacity:.5;}
+  .credit a{color:#7be0ad;text-decoration:none;}
+
+  /* ---- in-game HUD ---- */
+  #hud{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;justify-content:space-between;
+    align-items:flex-start;padding:max(12px,env(safe-area-inset-top)) 14px 0;pointer-events:none;}
+  .score{display:flex;flex-direction:column;align-items:center;background:rgba(6,18,13,.55);
+    border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:8px 14px;min-width:92px;backdrop-filter:blur(6px);}
+  .score .nm{font-size:11px;letter-spacing:.12em;text-transform:uppercase;opacity:.7;}
+  .score .pts{font-size:30px;font-weight:800;line-height:1;}
+  .score .balls{font-size:14px;margin-top:3px;letter-spacing:2px;}
+  .score.A{box-shadow:inset 0 -3px 0 var(--teamA);}
+  .score.B{box-shadow:inset 0 -3px 0 var(--teamB);}
+  .score.active{outline:2px solid #ffd54a;}
+  #midhud{display:flex;flex-direction:column;align-items:center;gap:4px;}
+  #frameNo{font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.65;}
+  #turn{font-size:14px;font-weight:700;background:rgba(6,18,13,.55);border-radius:999px;padding:5px 14px;
+    border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(6px);}
+  #coach{position:fixed;left:50%;transform:translateX(-50%);bottom:max(18px,env(safe-area-inset-bottom));
+    z-index:10;background:rgba(6,18,13,.7);border:1px solid rgba(255,255,255,.14);border-radius:14px;
+    padding:10px 16px;font-size:14px;max-width:88vw;text-align:center;backdrop-filter:blur(6px);
+    pointer-events:none;transition:opacity .25s;}
+  #coach.hide{opacity:0;}
+  #menuBtn{position:fixed;left:14px;bottom:max(14px,env(safe-area-inset-bottom));z-index:11;display:none;}
+  #menuBtn.show{display:block;}
+  .pill{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(6,18,13,.55);
+    color:var(--cream);border-radius:999px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;}
+  .big{font-size:clamp(26px,7vw,44px);font-weight:800;margin:0;}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="score A" id="scoreA"><span class="nm" id="nmA">You</span><span class="pts" id="ptsA">0</span><span class="balls" id="ballsA">●●●●</span></div>
+  <div id="midhud"><span id="frameNo">Frame 1</span><span id="turn">Your kick</span></div>
+  <div class="score B" id="scoreB"><span class="nm" id="nmB">Bocci</span><span class="pts" id="ptsB">0</span><span class="balls" id="ballsB">●●●●</span></div>
+</div>
+<button id="menuBtn" class="pill">Menu</button>
+<div id="coach">Drag back from your ball, then release to kick.</div>
+
+<!-- START MENU -->
+<div class="overlay" id="menu">
+  <div class="ball-emoji">⚽🟢🔴</div>
+  <h1>SoccerBocce</h1>
+  <p class="tag">Bocce — but you <b>kick soccer balls</b>. Flick yours closest to the little white <b>pallina</b>. Score a point for every ball you land closer than your rival's best. First to the target wins.</p>
+
+  <div class="label">Opponent</div>
+  <div class="seg" id="modeSeg">
+    <button data-mode="ai" class="on">vs Bocci (AI)</button>
+    <button data-mode="pvp">Pass &amp; Play</button>
+  </div>
+
+  <div class="label">Play to</div>
+  <div class="seg" id="targetSeg">
+    <button data-t="7">7</button>
+    <button data-t="12" class="on">12</button>
+    <button data-t="16">16</button>
+  </div>
+
+  <div class="label">Difficulty</div>
+  <div class="seg" id="diffSeg">
+    <button data-d="0.30">Casual</button>
+    <button data-d="0.16" class="on">Club</button>
+    <button data-d="0.07">Pro</button>
+  </div>
+
+  <button class="btn" id="playBtn">Kick Off ⚽</button>
+  <div class="credit">A <a href="https://www.mikeyalessandro.com" target="_blank" rel="noopener">Mikey Alessandro</a> original · ☕ <a href="https://ko-fi.com/mikeyalessandro" target="_blank" rel="noopener">tip jar</a></div>
+</div>
+
+<!-- FRAME RESULT -->
+<div class="overlay hidden" id="frameOver">
+  <div class="ball-emoji" id="foEmoji">🏁</div>
+  <p class="big" id="foTitle">Frame</p>
+  <p class="tag" id="foBody"></p>
+  <button class="btn" id="nextFrameBtn">Next Frame ⚽</button>
+</div>
+
+<!-- MATCH OVER -->
+<div class="overlay hidden" id="matchOver">
+  <div class="ball-emoji" id="moEmoji">🏆</div>
+  <h1 id="moTitle">You win!</h1>
+  <p class="tag" id="moBody"></p>
+  <div class="row">
+    <button class="btn" id="shareBtn">Share 📲</button>
+    <button class="btn secondary" id="rematchBtn">Rematch</button>
+  </div>
+  <div class="credit">A <a href="https://www.mikeyalessandro.com" target="_blank" rel="noopener">Mikey Alessandro</a> original</div>
+</div>
+
+<script>
+/* =========================================================================
+   SoccerBocce — single-file canvas physics game
+   Bocce rules, kicked with soccer balls. Scoring per Mikey's design figures:
+   closest team scores 1 pt for every ball nearer the pallina than the
+   opponent's nearest ball. Winner of a frame starts the next. First to target.
+   ========================================================================= */
+(() => {
+  "use strict";
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+
+  // ---- world (logical) coordinates; court is portrait ----
+  const W = 600, H = 980;                 // logical court size
+  const WALL = 14;                        // court border thickness
+  const KICK_Y = H - 70;                  // foul line / where balls spawn
+  const BALL_R = 20, PALL_R = 9;
+  const FRICTION = 0.987;                 // per-step velocity damping
+  const STOP_V = 0.06;                    // below this speed a ball halts
+  const WALL_BOUNCE = 0.55;               // energy kept on wall hit
+  const BALL_BOUNCE = 0.92;               // restitution between balls
+  const MAX_POWER = 33;                   // cap on launch speed
+  const STEP = 1/120;                     // fixed physics step (s)
+
+  let scale = 1, ox = 0, oy = 0;          // canvas fit transform
+
+  // ---- game state ----
+  const G = {
+    mode:'ai', target:12, aiErr:0.16,
+    nameA:'You', nameB:'Bocci',
+    scoreA:0, scoreB:0, frame:1,
+    balls:[], pallina:null,
+    starter:'A',           // team that throws pallina + first ball this frame
+    turn:'A',              // whose kick it is
+    phase:'menu',          // menu | pallina | aim | rolling | frameover | matchover
+    leftA:4, leftB:4,
+    activeBall:null,
+    aiming:false, aimStart:null, aimNow:null,
+    settleTimer:0,
+  };
+
+  // ---------- geometry / fit ----------
+  function resize(){
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio||1, 2.5);
+    cv.width = vw*dpr; cv.height = vh*dpr;
+    cv.style.width = vw+'px'; cv.style.height = vh+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    scale = Math.min(vw/W, vh/H);
+    ox = (vw - W*scale)/2;
+    oy = (vh - H*scale)/2;
+  }
+  window.addEventListener('resize', resize);
+
+  function toWorld(cx, cy){
+    const r = cv.getBoundingClientRect();
+    return { x:((cx - r.left) - ox)/scale, y:((cy - r.top) - oy)/scale };
+  }
+
+  // ---------- ball helpers ----------
+  function makeBall(team){
+    return { x:0, y:0, vx:0, vy:0, r:BALL_R, team, live:false, spin:Math.random()*6.28 };
+  }
+  function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+  function moving(){
+    if(G.pallina && (Math.abs(G.pallina.vx)>STOP_V || Math.abs(G.pallina.vy)>STOP_V)) return true;
+    return G.balls.some(b => b.live && (Math.abs(b.vx)>STOP_V || Math.abs(b.vy)>STOP_V));
+  }
+
+  // ---------- frame / turn flow ----------
+  function startMatch(){
+    G.scoreA=0; G.scoreB=0; G.frame=1; G.starter='A';
+    hud(); newFrame();
+    show('menu',false); show('frameOver',false); show('matchOver',false);
+    document.getElementById('menuBtn').classList.add('show');
+  }
+
+  function newFrame(){
+    G.balls = []; G.leftA=4; G.leftB=4; G.activeBall=null;
+    for(let i=0;i<4;i++){ G.balls.push(makeBall('A')); G.balls.push(makeBall('B')); }
+    // pallina kicked from center foul spot up the court
+    G.pallina = { x:W/2, y:KICK_Y, vx:0, vy:0, r:PALL_R };
+    const ang = -Math.PI/2 + (Math.random()-0.5)*0.7;
+    const pw = 17 + Math.random()*6;
+    G.pallina.vx = Math.cos(ang)*pw; G.pallina.vy = Math.sin(ang)*pw;
+    G.turn = G.starter;
+    G.phase='pallina';
+    coach('Setting the pallina…');
+    hud();
+  }
+
+  // after a ball stops: decide who kicks next (bocce: the team NOT closest plays)
+  function nextTurn(){
+    if(G.leftA===0 && G.leftB===0){ resolveFrame(); return; }
+    const closest = closestTeam();
+    let t;
+    if(G.leftA>0 && G.leftB>0){
+      t = closest==='A' ? 'B' : 'A';   // losing team kicks
+    } else {
+      t = G.leftA>0 ? 'A' : 'B';        // only one team has balls left
+    }
+    G.turn = t;
+    if(G.mode==='ai' && t==='B'){ G.phase='aim'; queueAI(); }
+    else { G.phase='aim'; coach(t==='A'? humanPrompt(G.nameA) : humanPrompt(G.nameB)); }
+    hud();
+  }
+
+  function humanPrompt(n){ return `${n}: drag back from the spawn ball & release to kick.`; }
+
+  function closestTeam(){
+    let best=Infinity, team=null;
+    for(const b of G.balls){ if(!b.live) continue;
+      const d=dist(b,G.pallina); if(d<best){best=d;team=b.team;} }
+    return team;
+  }
+
+  function resolveFrame(){
+    // distances
+    const live = G.balls.filter(b=>b.live).map(b=>({team:b.team,d:dist(b,G.pallina)}));
+    const bestA = Math.min(...live.filter(b=>b.team==='A').map(b=>b.d), Infinity);
+    const bestB = Math.min(...live.filter(b=>b.team==='B').map(b=>b.d), Infinity);
+    let winTeam, pts;
+    if(bestA<bestB){ winTeam='A'; pts = live.filter(b=>b.team==='A' && b.d<bestB).length; }
+    else if(bestB<bestA){ winTeam='B'; pts = live.filter(b=>b.team==='B' && b.d<bestA).length; }
+    else { winTeam=null; pts=0; }
+
+    if(winTeam==='A') G.scoreA+=pts;
+    if(winTeam==='B') G.scoreB+=pts;
+    if(winTeam) G.starter=winTeam;     // winner starts next frame
+    hud();
+
+    if(G.scoreA>=G.target || G.scoreB>=G.target){ matchOver(); return; }
+
+    // frame result overlay
+    const fo=document.getElementById('frameOver');
+    const nm = winTeam==='A'?G.nameA : winTeam==='B'?G.nameB : null;
+    document.getElementById('foEmoji').textContent = winTeam==='A'?'🟢':winTeam==='B'?'🔴':'🤝';
+    document.getElementById('foTitle').textContent = winTeam? `${nm} take the frame +${pts}` : 'Tied frame — no points';
+    const measure = isFinite(bestA)&&isFinite(bestB)
+      ? `Closest: ${G.nameA} ${(bestA/scalePxToFt()).toFixed(1)}ft · ${G.nameB} ${(bestB/scalePxToFt()).toFixed(1)}ft.`
+      : '';
+    document.getElementById('foBody').textContent =
+      `${measure} ${G.scoreA}–${G.scoreB}. ${winTeam? nm+' starts the next frame.':'Same starter again.'}`;
+    G.phase='frameover';
+    show('frameOver',true);
+    burst(winTeam);
+  }
+  function scalePxToFt(){ return 32; } // ~visual feet, just for flavor text
+
+  function matchOver(){
+    const youWin = G.scoreA>=G.target;
+    document.getElementById('menuBtn').classList.remove('show');
+    document.getElementById('moEmoji').textContent = youWin?'🏆':'😤';
+    if(G.mode==='pvp'){
+      const w = G.scoreA>G.scoreB?G.nameA:G.nameB;
+      document.getElementById('moTitle').textContent = `${w} wins!`;
+    } else {
+      document.getElementById('moTitle').textContent = youWin?'You win! 🏆':'Bocci wins';
+    }
+    document.getElementById('moBody').textContent =
+      `Final ${G.scoreA}–${G.scoreB} after ${G.frame} frame${G.frame>1?'s':''}.`;
+    G.phase='matchover';
+    show('matchOver',true);
+    if(youWin || G.mode==='pvp') confettiStorm();
+  }
+
+  // ---------- AI ----------
+  function queueAI(){
+    coach(`${G.nameB} is lining up a kick…`);
+    setTimeout(()=>{ if(G.phase==='aim' && G.turn==='B') aiKick(); }, 750);
+  }
+  function aiKick(){
+    spawnActive('B');
+    const b=G.activeBall;
+    // aim straight at pallina with skill-based error
+    const dx=G.pallina.x-b.x, dy=G.pallina.y-b.y;
+    const d=Math.hypot(dx,dy);
+    let ang=Math.atan2(dy,dx) + (Math.random()-0.5)*G.aiErr;
+    // power: try to stop near pallina (account for friction range), plus error
+    let target = d*(1 + (Math.random()-0.5)*G.aiErr*2);
+    let power = powerForDistance(target);
+    power = Math.min(MAX_POWER, Math.max(7, power*(0.97+Math.random()*0.06)));
+    launch(b, Math.cos(ang)*power, Math.sin(ang)*power);
+  }
+  // invert friction geometric series to pick a launch speed for a target glide distance
+  function powerForDistance(distPx){
+    // total glide distance for speed v ≈ v*STEP/(1-FRICTION) (per-step). tune constant.
+    const v = distPx * (1-FRICTION) / 1.0;
+    return v;
+  }
+
+  // ---------- launching / spawning ----------
+  function spawnActive(team){
+    const b = G.balls.find(x=>x.team===team && !x.live && x!==G.activeBall && !x.spawned);
+    if(!b) return null;
+    b.x = W/2 + (Math.random()-0.5)*40;
+    b.y = KICK_Y;
+    b.spawned = true;
+    G.activeBall = b;
+    return b;
+  }
+  function launch(b, vx, vy){
+    b.live = true; b.vx=vx; b.vy=vy; b.spawned=false;
+    if(b.team==='A') G.leftA--; else G.leftB--;
+    G.activeBall=null;
+    G.phase='rolling';
+    sfxKick();
+    hud();
+  }
+
+  // ---------- physics ----------
+  function physics(dt){
+    let steps = Math.min(6, Math.ceil(dt/STEP));
+    for(let s=0;s<steps;s++) step();
+  }
+  function step(){
+    const objs = [G.pallina, ...G.balls.filter(b=>b.live)];
+    for(const o of objs){
+      o.x += o.vx; o.y += o.vy;
+      o.vx*=FRICTION; o.vy*=FRICTION;
+      // walls
+      if(o.x < WALL+o.r){ o.x=WALL+o.r; o.vx=-o.vx*WALL_BOUNCE; }
+      if(o.x > W-WALL-o.r){ o.x=W-WALL-o.r; o.vx=-o.vx*WALL_BOUNCE; }
+      if(o.y < WALL+o.r){ o.y=WALL+o.r; o.vy=-o.vy*WALL_BOUNCE; }
+      if(o.y > H-WALL-o.r){ o.y=H-WALL-o.r; o.vy=-o.vy*WALL_BOUNCE; }
+      if(Math.abs(o.vx)<STOP_V) o.vx=0;
+      if(Math.abs(o.vy)<STOP_V) o.vy=0;
+      o.spin += (Math.abs(o.vx)+Math.abs(o.vy))*0.01;
+    }
+    // collisions (pairwise)
+    for(let i=0;i<objs.length;i++){
+      for(let j=i+1;j<objs.length;j++){
+        collide(objs[i], objs[j]);
+      }
+    }
+  }
+  function collide(a,b){
+    const dx=b.x-a.x, dy=b.y-a.y; let d=Math.hypot(dx,dy);
+    const min=a.r+b.r;
+    if(d===0){ d=0.01; }
+    if(d<min){
+      const nx=dx/d, ny=dy/d, overlap=min-d;
+      // pallina is lighter → pushed more
+      const ma = a.r===PALL_R?0.45:1, mb = b.r===PALL_R?0.45:1;
+      const tot=ma+mb;
+      a.x -= nx*overlap*(mb/tot); a.y -= ny*overlap*(mb/tot);
+      b.x += nx*overlap*(ma/tot); b.y += ny*overlap*(ma/tot);
+      // relative velocity along normal
+      const rvx=b.vx-a.vx, rvy=b.vy-a.vy;
+      const vn=rvx*nx+rvy*ny;
+      if(vn<0){
+        const imp = -(1+BALL_BOUNCE)*vn/(1/ma+1/mb);
+        const ix=imp*nx, iy=imp*ny;
+        a.vx -= ix/ma; a.vy -= iy/ma;
+        b.vx += ix/mb; b.vy += iy/mb;
+        sfxClack(Math.min(1,Math.abs(vn)/14));
+      }
+    }
+  }
+
+  // ---------- main loop ----------
+  let last=performance.now();
+  function loop(now){
+    const dt=Math.min(0.05,(now-last)/1000); last=now;
+
+    if(G.phase==='pallina'){
+      physics(dt);
+      if(!moving()){
+        // ensure pallina is up-court & in bounds; nudge if too close to foul line
+        if(G.pallina.y > H*0.55){ G.pallina.y = H*0.40 + Math.random()*60; G.pallina.vx=G.pallina.vy=0; }
+        // starter plays first ball
+        G.turn=G.starter; G.phase='aim';
+        if(G.mode==='ai' && G.turn==='B') queueAI();
+        else coach(humanPrompt(G.turn==='A'?G.nameA:G.nameB));
+        hud();
+      }
+    } else if(G.phase==='rolling'){
+      physics(dt);
+      if(!moving()){
+        G.settleTimer += dt;
+        if(G.settleTimer>0.25){ G.settleTimer=0; nextTurn(); }
+      } else G.settleTimer=0;
+    }
+
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- rendering ----------
+  function draw(){
+    ctx.save();
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ctx.translate(ox,oy); ctx.scale(scale,scale);
+
+    drawCourt();
+
+    // measuring lines to current closest of each team (during play)
+    if(G.phase!=='menu') drawMeasures();
+
+    // balls
+    for(const b of G.balls){ if(b.live) drawBall(b); }
+    if(G.activeBall) drawBall(G.activeBall, true);
+    if(G.pallina) drawPallina(G.pallina);
+
+    // aim guide
+    if(G.aiming && G.activeBall) drawAim();
+
+    // confetti
+    drawConfetti();
+    ctx.restore();
+  }
+
+  function drawCourt(){
+    // outer frame
+    roundRect(0,0,W,H,18); ctx.fillStyle='#0a3a2a'; ctx.fill();
+    // playing surface
+    ctx.fillStyle='#11543c';
+    roundRect(WALL,WALL,W-2*WALL,H-2*WALL,10); ctx.fill();
+    // mowed stripes
+    ctx.save(); ctx.beginPath(); roundRect(WALL,WALL,W-2*WALL,H-2*WALL,10); ctx.clip();
+    for(let y=WALL;y<H;y+=64){ ctx.fillStyle = ((y/64)|0)%2 ? 'rgba(255,255,255,.035)':'rgba(0,0,0,.05)';
+      ctx.fillRect(WALL,y,W-2*WALL,32); }
+    ctx.restore();
+    // halfway + center circle
+    ctx.strokeStyle='rgba(255,255,255,.28)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(WALL,H/2); ctx.lineTo(W-WALL,H/2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(W/2,H/2,52,0,7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(W/2,H/2,4,0,7); ctx.fillStyle='rgba(255,255,255,.4)'; ctx.fill();
+    // foul line
+    ctx.setLineDash([8,8]); ctx.strokeStyle='rgba(255,255,255,.35)';
+    ctx.beginPath(); ctx.moveTo(WALL,KICK_Y); ctx.lineTo(W-WALL,KICK_Y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function drawMeasures(){
+    if(!G.pallina) return;
+    const near = {};
+    for(const t of ['A','B']){
+      let best=Infinity,ball=null;
+      for(const b of G.balls){ if(b.live&&b.team===t){ const d=dist(b,G.pallina); if(d<best){best=d;ball=b;} } }
+      near[t]=ball;
+    }
+    const close = closestTeam();
+    for(const t of ['A','B']){
+      const b=near[t]; if(!b) continue;
+      ctx.strokeStyle = t===close ? 'rgba(255,213,74,.85)' : 'rgba(255,255,255,.25)';
+      ctx.lineWidth = t===close?3:1.5; ctx.setLineDash(t===close?[]:[5,6]);
+      ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(G.pallina.x,G.pallina.y); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  function drawBall(b, ghost){
+    const A = b.team==='A';
+    const c1 = A?'#19b06e':'#c43a3d', c2 = A?'#0a4d31':'#4d1214';
+    ctx.save();
+    // shadow
+    ctx.beginPath(); ctx.ellipse(b.x+3,b.y+6,b.r*0.95,b.r*0.6,0,0,7);
+    ctx.fillStyle='rgba(0,0,0,.28)'; ctx.fill();
+    // body
+    const g=ctx.createRadialGradient(b.x-b.r*0.4,b.y-b.r*0.4,2,b.x,b.y,b.r);
+    g.addColorStop(0,c1); g.addColorStop(1,c2);
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.fillStyle=g; ctx.fill();
+    ctx.globalAlpha = ghost?0.5:1;
+    // soccer pentagons hint (rotating)
+    ctx.translate(b.x,b.y); ctx.rotate(b.spin);
+    ctx.fillStyle='rgba(0,0,0,.55)';
+    for(let k=0;k<5;k++){ ctx.beginPath();
+      const a=k/5*6.283; const px=Math.cos(a)*b.r*0.55, py=Math.sin(a)*b.r*0.55;
+      ctx.arc(px,py,b.r*0.16,0,7); ctx.fill(); }
+    ctx.beginPath(); ctx.arc(0,0,b.r*0.2,0,7); ctx.fill();
+    ctx.restore();
+    // rim
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.lineWidth=2;
+    ctx.strokeStyle=A?'rgba(180,255,210,.5)':'rgba(255,190,190,.5)'; ctx.stroke();
+  }
+
+  function drawPallina(p){
+    ctx.beginPath(); ctx.ellipse(p.x+2,p.y+4,p.r,p.r*0.6,0,0,7); ctx.fillStyle='rgba(0,0,0,.25)'; ctx.fill();
+    const g=ctx.createRadialGradient(p.x-3,p.y-3,1,p.x,p.y,p.r);
+    g.addColorStop(0,'#ffffff'); g.addColorStop(1,'#cfcabd');
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fillStyle=g; ctx.fill();
+    ctx.lineWidth=1.5; ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.stroke();
+  }
+
+  function drawAim(){
+    const b=G.activeBall, s=G.aimStart, n=G.aimNow;
+    if(!s||!n) return;
+    let dx=s.x-n.x, dy=s.y-n.y;           // slingshot: launch opposite drag
+    let mag=Math.hypot(dx,dy);
+    const power=Math.min(MAX_POWER, mag*0.13);
+    const ang=Math.atan2(dy,dx);
+    const len=power/MAX_POWER * 230;
+    // trajectory dots
+    ctx.save();
+    for(let i=1;i<=7;i++){
+      const t=i/7;
+      const px=b.x+Math.cos(ang)*len*t, py=b.y+Math.sin(ang)*len*t;
+      ctx.globalAlpha=0.9-t*0.7; ctx.beginPath();
+      ctx.arc(px,py,6-t*3,0,7); ctx.fillStyle='#ffd54a'; ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    // power ring
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r+8,-Math.PI/2,-Math.PI/2+power/MAX_POWER*6.283);
+    ctx.strokeStyle='#ffd54a'; ctx.lineWidth=4; ctx.stroke();
+    // drag handle
+    ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(n.x,n.y);
+    ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.lineWidth=2; ctx.setLineDash([4,6]); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  function roundRect(x,y,w,h,r){ ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  // ---------- input ----------
+  function canHumanKick(){
+    if(G.phase!=='aim') return false;
+    if(G.mode==='ai' && G.turn==='B') return false;
+    return true;
+  }
+  function pointerDown(e){
+    if(!canHumanKick()) return;
+    // spawn active ball if none
+    if(!G.activeBall) spawnActive(G.turn);
+    if(!G.activeBall) return;
+    const p=toWorld(e.clientX,e.clientY);
+    G.aiming=true; G.aimStart=p; G.aimNow=p;
+  }
+  function pointerMove(e){ if(!G.aiming) return; G.aimNow=toWorld(e.clientX,e.clientY); }
+  function pointerUp(e){
+    if(!G.aiming) return; G.aiming=false;
+    const b=G.activeBall, s=G.aimStart, n=G.aimNow;
+    let dx=s.x-n.x, dy=s.y-n.y, mag=Math.hypot(dx,dy);
+    if(mag<14){ coach('Drag back further to build power, then release.'); return; }
+    const power=Math.min(MAX_POWER, mag*0.13);
+    const ang=Math.atan2(dy,dx);
+    launch(b, Math.cos(ang)*power, Math.sin(ang)*power);
+  }
+  cv.addEventListener('pointerdown', pointerDown);
+  cv.addEventListener('pointermove', pointerMove);
+  window.addEventListener('pointerup', pointerUp);
+  cv.addEventListener('pointercancel', ()=>{G.aiming=false;});
+
+  // ---------- HUD ----------
+  function hud(){
+    document.getElementById('ptsA').textContent=G.scoreA;
+    document.getElementById('ptsB').textContent=G.scoreB;
+    document.getElementById('nmA').textContent=G.nameA;
+    document.getElementById('nmB').textContent=G.nameB;
+    document.getElementById('ballsA').textContent='●'.repeat(G.leftA)+'○'.repeat(4-G.leftA);
+    document.getElementById('ballsB').textContent='●'.repeat(G.leftB)+'○'.repeat(4-G.leftB);
+    document.getElementById('frameNo').textContent='Frame '+G.frame+' · to '+G.target;
+    const t = G.turn==='A'?G.nameA:G.nameB;
+    document.getElementById('turn').textContent = G.phase==='pallina' ? 'Pallina out…'
+      : (G.mode==='ai'&&G.turn==='B' ? 'Bocci kicks' : `${t}'s kick`);
+    document.getElementById('scoreA').classList.toggle('active', G.turn==='A' && G.phase==='aim');
+    document.getElementById('scoreB').classList.toggle('active', G.turn==='B' && G.phase==='aim');
+  }
+  let coachTimer=null;
+  function coach(msg){
+    const el=document.getElementById('coach');
+    el.textContent=msg; el.classList.remove('hide');
+    clearTimeout(coachTimer); coachTimer=setTimeout(()=>el.classList.add('hide'), 3400);
+  }
+
+  // ---------- overlays ----------
+  function show(id,on){ document.getElementById(id).classList.toggle('hidden',!on); }
+
+  // ---------- audio (WebAudio, no assets) ----------
+  let AC=null;
+  function ac(){ if(!AC){ try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){} } return AC; }
+  function tone(f,dur,type,vol,slideTo){
+    const a=ac(); if(!a) return;
+    const o=a.createOscillator(), g=a.createGain();
+    o.type=type||'sine'; o.frequency.value=f;
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, a.currentTime+dur);
+    g.gain.value=vol||0.2; g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime+dur);
+    o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+dur);
+  }
+  function sfxKick(){ tone(150,0.16,'triangle',0.35,60); tone(420,0.05,'square',0.12); }
+  function sfxClack(v){ tone(220+Math.random()*120,0.07,'square',0.05+0.18*v); }
+  function sfxWhistle(){ tone(900,0.18,'sine',0.18,1400); }
+
+  // ---------- confetti / bursts ----------
+  const conf=[];
+  function burst(team){
+    if(!team) return;
+    const c = team==='A'?['#19b06e','#8ff0bf','#fff']:['#c43a3d','#ff9a8b','#fff'];
+    for(let i=0;i<60;i++) conf.push(spark(W/2,H/2,c));
+    sfxWhistle();
+  }
+  function confettiStorm(){
+    const c=['#19b06e','#c43a3d','#ffd54a','#8ff0bf','#fff'];
+    for(let i=0;i<180;i++) conf.push(spark(Math.random()*W,-20,c,true));
+    sfxWhistle();
+  }
+  function spark(x,y,cols,rain){
+    return { x,y, vx:(Math.random()-0.5)*(rain?4:10), vy:rain?2+Math.random()*4:-(4+Math.random()*9),
+      g:0.18, r:3+Math.random()*4, col:cols[(Math.random()*cols.length)|0],
+      rot:Math.random()*6, vr:(Math.random()-0.5)*0.4, life:1 };
+  }
+  function drawConfetti(){
+    for(let i=conf.length-1;i>=0;i--){ const p=conf[i];
+      p.vy+=p.g; p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; p.life-=0.006;
+      if(p.y>H+30||p.life<=0){ conf.splice(i,1); continue; }
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.globalAlpha=Math.max(0,p.life);
+      ctx.fillStyle=p.col; ctx.fillRect(-p.r,-p.r,p.r*2,p.r*2.4); ctx.restore();
+    }
+  }
+
+  // ---------- menu wiring ----------
+  document.querySelectorAll('#modeSeg button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); G.mode=b.dataset.mode;
+  });
+  document.querySelectorAll('#targetSeg button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#targetSeg button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); G.target=+b.dataset.t;
+  });
+  document.querySelectorAll('#diffSeg button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#diffSeg button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); G.aiErr=+b.dataset.d;
+  });
+  document.getElementById('playBtn').onclick=()=>{
+    ac();
+    G.nameA = G.mode==='pvp'?'Green':'You';
+    G.nameB = G.mode==='pvp'?'Maroon':'Bocci';
+    startMatch();
+  };
+  document.getElementById('nextFrameBtn').onclick=()=>{
+    G.frame++; show('frameOver',false); newFrame();
+  };
+  document.getElementById('rematchBtn').onclick=()=>{ show('matchOver',false); startMatch(); };
+  document.getElementById('menuBtn').onclick=()=>{
+    if(confirm('Quit this match and return to menu?')){
+      document.getElementById('menuBtn').classList.remove('show');
+      G.phase='menu'; show('menu',true);
+    }
+  };
+  document.getElementById('shareBtn').onclick=async ()=>{
+    const youWin=G.scoreA>=G.target;
+    const txt=`I just ${youWin?'won':'played'} SoccerBocce ${G.scoreA}–${G.scoreB} ⚽🟢🔴 — bocce but you kick soccer balls. Play free:`;
+    const url=location.href.split('#')[0];
+    try{
+      if(navigator.share){ await navigator.share({title:'SoccerBocce',text:txt,url}); }
+      else { await navigator.clipboard.writeText(txt+' '+url); coach('Link copied to clipboard!'); }
+    }catch(e){}
+  };
+
+  // ---------- go ----------
+  resize();
+  requestAnimationFrame(loop);
+
+  // service worker (offline / installable) — ignore if unsupported
+  if('serviceWorker' in navigator){
+    window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  }
+})();
+</script>
+</body>
+</html>

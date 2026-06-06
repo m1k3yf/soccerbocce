@@ -1,0 +1,16 @@
+{
+  "name": "SoccerBocce",
+  "short_name": "SoccerBocce",
+  "description": "Bocce, but you kick soccer balls. Flick yours closest to the pallina. First to 12 wins.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#06120d",
+  "theme_color": "#0b3d2e",
+  "categories": ["games", "sports"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
