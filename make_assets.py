@@ -102,9 +102,78 @@ def make_og(path):
     circle(d,w,h,915,250,42,(255,255,255,255))   # pallina
     png(path,w,h,d)
 
+def ring(dst, w, h, cx, cy, R, thick, col):
+    x0, x1 = int(cx-R-thick-1), int(cx+R+thick+1)
+    y0, y1 = int(cy-R-thick-1), int(cy+R+thick+1)
+    for y in range(max(0, y0), min(h, y1)):
+        for x in range(max(0, x0), min(w, x1)):
+            dd = math.hypot(x-cx, y-cy)
+            if abs(dd-R) <= thick:
+                a = 1 - abs(dd-R)/thick
+                blend(dst, w, x, y, (col[0], col[1], col[2], int(col[3]*max(0, min(1, a)))))
+
+def hline(dst, w, h, x0, x1, y, thick, col):
+    for yy in range(int(y-thick), int(y+thick)):
+        for x in range(int(x0), int(x1)):
+            if 0 <= x < w and 0 <= yy < h: blend(dst, w, x, yy, col)
+
+def vline(dst, w, h, y0, y1, x, thick, col):
+    for xx in range(int(x-thick), int(x+thick)):
+        for y in range(int(y0), int(y1)):
+            if 0 <= xx < w and 0 <= y < h: blend(dst, w, xx, y, col)
+
+def boxline(dst, w, h, x, y, bw, bh, thick, col):
+    hline(dst, w, h, x, x+bw, y, thick, col); hline(dst, w, h, x, x+bw, y+bh, thick, col)
+    vline(dst, w, h, y, y+bh, x, thick, col); vline(dst, w, h, y, y+bh, x+bw, thick, col)
+
+def shadow(dst, w, h, cx, cy, r):
+    circle(dst, w, h, cx+4, cy+10, r*0.95, (0, 0, 0, 70), edge=4)
+
+def make_portfolio(path):
+    """4:3 beauty-shot tile of the SoccerBocce pitch for the portfolio grid."""
+    w, h = 1000, 750
+    d = buf(w, h, (110, 74, 43, 255))           # wooden frame (full bleed)
+    m = 22
+    # green pitch (vertical light gradient)
+    for y in range(m, h-m):
+        t = (y-m)/(h-2*m)
+        col = tuple(int(a*(1-t)+b*t) for a, b in zip((30, 116, 78), (12, 70, 46))) + (255,)
+        for x in range(m, w-m): blend(d, w, x, y, col)
+    # mowing stripes
+    for y in range(m, h-m, 60):
+        c = (255, 255, 255, 12) if (y//60) % 2 else (0, 0, 0, 16)
+        for yy in range(y, min(h-m, y+30)):
+            for x in range(m, w-m): blend(d, w, x, yy, c)
+    # markings
+    line = (255, 255, 255, 70)
+    hline(d, w, h, m, w-m, h/2, 1.4, line)                       # halfway
+    ring(d, w, h, w/2, h/2, 96, 1.8, line)                       # centre circle
+    circle(d, w, h, w/2, h/2, 4, (255, 255, 255, 120))           # centre spot
+    boxline(d, w, h, w/2-210, h-m-150, 420, 150, 1.8, line)      # penalty box (bottom)
+    boxline(d, w, h, w/2-115, h-m-66, 230, 66, 1.8, line)        # goal box (bottom)
+    boxline(d, w, h, w/2-210, m, 420, 150, 1.8, line)            # penalty box (top)
+    # vignette
+    cx, cy, maxd = w/2, h/2, math.hypot(w/2, h/2)
+    for y in range(m, h-m):
+        for x in range(m, w-m):
+            a = int(130*max(0, math.hypot(x-cx, y-cy)/maxd - 0.45))
+            if a > 0: blend(d, w, x, y, (0, 0, 0, a))
+    # balls clustered around the pallina (with soft shadows)
+    G, GD = (34, 200, 120, 255), (8, 60, 42, 255)
+    R, RD = (214, 78, 76, 255), (74, 18, 20, 255)
+    balls = [(430, 400, G, GD), (560, 320, R, RD), (610, 430, G, GD),
+             (520, 470, R, RD), (690, 360, G, GD)]
+    for bx, by, *_ in balls: shadow(d, w, h, bx, by, 52)
+    circle(d, w, h, 545, 405, 22, (255, 255, 255, 255))          # pallina
+    circle(d, w, h, 545, 405, 22, (190, 184, 168, 90), edge=3)
+    for bx, by, base, dk in balls: soccer_ball(d, w, h, bx, by, 52, base, dk)
+    png(path, w, h, d)
+
 if __name__ == "__main__":
     os.makedirs("icons", exist_ok=True)
+    os.makedirs("portfolio", exist_ok=True)
     make_icon(192, "icons/icon-192.png")
     make_icon(512, "icons/icon-512.png")
     make_og("og.png")
+    make_portfolio("portfolio/soccerbocce.png")
     print("done")
