@@ -203,7 +203,7 @@
   const W = 600, H = 980;
   const WALL = 18;                         // wooden surround thickness
   const KICK_Y = H - 66;                   // foul line / where balls spawn
-  const BALL_R = 20, PALL_R = 9;
+  const BALL_R = 24, PALL_R = 10;
   const FRICTION = 0.987, STOP_V = 0.06;
   const WALL_BOUNCE = 0.5, BALL_BOUNCE = 0.92;
   const MAX_POWER = 33, STEP = 1/120;
@@ -602,12 +602,34 @@
       o.fillStyle=Math.random()<.5?'rgba(255,255,255,.05)':'rgba(0,40,20,.18)';
       o.fillRect(gx,gy,1.4,1.4); }
     o.globalAlpha=1;
-    // painted lines
-    o.strokeStyle='rgba(255,255,255,.30)'; o.lineWidth=2.4;
+    // --- soccer pitch markings (vertical pitch: goals top & bottom) ---
+    const cxx=W/2, pbW=iw*0.60, gbW=iw*0.30, pbD=ih*0.14, gbD=ih*0.055;
+    o.strokeStyle='rgba(255,255,255,.26)'; o.lineWidth=2.3; o.lineJoin='round';
+    // halfway line + centre circle + spot
     o.beginPath(); o.moveTo(ix,H/2); o.lineTo(ix+iw,H/2); o.stroke();
-    o.beginPath(); o.arc(W/2,H/2,54,0,7); o.stroke();
-    o.beginPath(); o.arc(W/2,H/2,4,0,7); o.fillStyle='rgba(255,255,255,.5)'; o.fill();
-    o.setLineDash([9,9]); o.strokeStyle='rgba(255,255,255,.4)';
+    o.beginPath(); o.arc(cxx,H/2,58,0,7); o.stroke();
+    o.beginPath(); o.arc(cxx,H/2,3.2,0,7); o.fillStyle='rgba(255,255,255,.5)'; o.fill();
+    for(const end of [0,1]){
+      const gy = end ? iy+ih : iy;            // goal line (top / bottom)
+      const dir = end ? -1 : 1;               // direction into the field
+      o.strokeStyle='rgba(255,255,255,.26)'; o.lineWidth=2.3;
+      o.strokeRect(cxx-pbW/2, end? gy-pbD : gy, pbW, pbD);     // 18-yard box
+      o.strokeRect(cxx-gbW/2, end? gy-gbD : gy, gbW, gbD);     // 6-yard box
+      const spotY=gy+dir*ih*0.095, arcR=ih*0.075, edge=pbD-Math.abs(spotY-gy);
+      o.beginPath(); o.arc(cxx,spotY,2.6,0,7); o.fillStyle='rgba(255,255,255,.45)'; o.fill();
+      const ha=Math.acos(Math.max(-0.99,Math.min(0.99, edge/arcR))), face=end?-Math.PI/2:Math.PI/2;
+      o.beginPath(); o.arc(cxx,spotY,arcR, face-ha, face+ha); o.stroke();   // penalty arc
+      o.lineWidth=4; o.strokeStyle='rgba(255,255,255,.4)';                  // goal mouth
+      o.beginPath(); o.moveTo(cxx-gbW*0.32, gy); o.lineTo(cxx+gbW*0.32, gy); o.stroke();
+    }
+    // corner arcs
+    o.strokeStyle='rgba(255,255,255,.26)'; o.lineWidth=2.3; const crr=ih*0.016;
+    o.beginPath(); o.arc(ix,iy,crr,0,Math.PI/2); o.stroke();
+    o.beginPath(); o.arc(ix+iw,iy,crr,Math.PI/2,Math.PI); o.stroke();
+    o.beginPath(); o.arc(ix+iw,iy+ih,crr,Math.PI,Math.PI*1.5); o.stroke();
+    o.beginPath(); o.arc(ix,iy+ih,crr,Math.PI*1.5,Math.PI*2); o.stroke();
+    // kick / foul line — where you launch from (kept distinct, warm dashed)
+    o.setLineDash([9,9]); o.strokeStyle='rgba(255,240,200,.42)'; o.lineWidth=2.2;
     o.beginPath(); o.moveTo(ix,KICK_Y); o.lineTo(ix+iw,KICK_Y); o.stroke(); o.setLineDash([]);
     // recessed inner shadow (sunken look)
     for(let k=0;k<5;k++){ rr(o,ix+k,iy+k,iw-2*k,ih-2*k,12-k);
@@ -777,30 +799,43 @@
     ctx.restore();
   }
 
+  // simulate a lone ball's path (same physics as step(), incl. wall bounces) for an accurate aim line
+  function simulatePath(x,y,vx,vy){
+    const pts=[{x,y}]; let px=x,py=y,pvx=vx,pvy=vy;
+    for(let i=0;i<1600;i++){
+      px+=pvx; py+=pvy; pvx*=FRICTION; pvy*=FRICTION;
+      if(px<WALL+BALL_R){ px=WALL+BALL_R; pvx=-pvx*WALL_BOUNCE; }
+      else if(px>W-WALL-BALL_R){ px=W-WALL-BALL_R; pvx=-pvx*WALL_BOUNCE; }
+      if(py<WALL+BALL_R){ py=WALL+BALL_R; pvy=-pvy*WALL_BOUNCE; }
+      else if(py>H-WALL-BALL_R){ py=H-WALL-BALL_R; pvy=-pvy*WALL_BOUNCE; }
+      if(Math.abs(pvx)<STOP_V) pvx=0;
+      if(Math.abs(pvy)<STOP_V) pvy=0;
+      if(i%5===0) pts.push({x:px,y:py});
+      if(pvx===0 && pvy===0){ pts.push({x:px,y:py}); break; }
+    }
+    return pts;
+  }
   function drawAim(){
     const b=G.activeBall, s=G.aimStart, n=G.aimNow; if(!s||!n) return;
     let dx=s.x-n.x, dy=s.y-n.y, mag=Math.hypot(dx,dy);
     const power=Math.min(MAX_POWER, mag*0.13), ratio=power/MAX_POWER;
     const ang=Math.atan2(dy,dx);
-    const glide=power*GLIDE_K;
-    let ex=b.x+Math.cos(ang)*glide, ey=b.y+Math.sin(ang)*glide;
-    ex=Math.max(WALL+8,Math.min(W-WALL-8,ex)); ey=Math.max(WALL+8,Math.min(H-WALL-8,ey));
+    const path=simulatePath(b.x, b.y, Math.cos(ang)*power, Math.sin(ang)*power);
+    const end=path[path.length-1];
     const col = ratio<0.5?'120,230,150' : ratio<0.8?'255,211,90':'255,120,90';
     ctx.save();
-    // dotted line to predicted stop
-    const dots=10;
-    for(let i=1;i<=dots;i++){ const t=i/dots;
-      const px=b.x+(ex-b.x)*t, py=b.y+(ey-b.y)*t;
-      ctx.globalAlpha=0.85-t*0.5; ctx.beginPath(); ctx.arc(px,py,5.5-t*2.5,0,7);
-      ctx.fillStyle=`rgb(${col})`; ctx.fill(); }
+    // dotted predicted path — follows real bounces off the walls
+    ctx.fillStyle=`rgb(${col})`;
+    const N=path.length;
+    for(let i=1;i<N;i++){ const t=i/N;
+      ctx.globalAlpha=0.9-t*0.6; ctx.beginPath(); ctx.arc(path[i].x,path[i].y, 5-t*2.4, 0,7); ctx.fill(); }
     ctx.globalAlpha=1;
-    // predicted landing ring
-    ctx.beginPath(); ctx.arc(ex,ey,11,0,7); ctx.lineWidth=2.5; ctx.strokeStyle=`rgb(${col})`; ctx.stroke();
-    ctx.beginPath(); ctx.arc(ex,ey,3,0,7); ctx.fillStyle=`rgb(${col})`; ctx.fill();
-    // power ring around ball
+    // landing ring at the true stopping point
+    ctx.beginPath(); ctx.arc(end.x,end.y,11,0,7); ctx.lineWidth=2.5; ctx.strokeStyle=`rgb(${col})`; ctx.stroke();
+    ctx.beginPath(); ctx.arc(end.x,end.y,3,0,7); ctx.fillStyle=`rgb(${col})`; ctx.fill();
+    // power ring + pull handle
     ctx.beginPath(); ctx.arc(b.x,b.y,b.r+9,-Math.PI/2,-Math.PI/2+ratio*6.283);
     ctx.strokeStyle=`rgb(${col})`; ctx.lineWidth=4.5; ctx.lineCap='round'; ctx.stroke();
-    // pull handle
     ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(n.x,n.y);
     ctx.strokeStyle='rgba(255,255,255,.4)'; ctx.lineWidth=2; ctx.setLineDash([4,6]); ctx.stroke();
     ctx.setLineDash([]); ctx.restore();
@@ -909,15 +944,13 @@
     const g=a.createGain(); g.gain.setValueAtTime(Math.max(0.0001,vol),t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
     src.connect(f); f.connect(g); g.connect(master); src.start(t); src.stop(t+dur+0.03);
   }
-  // ball ↔ ball: deep woody bocce "thock" — low body + dark knock, little treble
+  // ball ↔ ball: soft inflated-soccer-ball "pock" — damped & leathery, no ring
   function sfxClack(v){
     if(!ac()) return; v=Math.max(0.05,Math.min(1,v));
-    const base=330+330*v, vol=0.14+0.44*v;
-    noiseBurst(0.02, vol*0.55, 'lowpass', 950+800*v, 0.6);       // dark knock attack
-    partial(base*0.6,  0.090,        vol*1.0,  'sine');          // low body / thud
-    partial(base,      0.070+0.02*v, vol*0.95, 'sine');          // woody fundamental
-    partial(base*1.78, 0.045,        vol*0.40, 'triangle');      // inharmonic ring
-    partial(base*2.55, 0.028,        vol*0.16, 'sine');          // faint upper edge
+    const base=210+190*v, vol=0.13+0.45*v;
+    noiseBurst(0.026, vol*0.5, 'lowpass', 520+520*v, 0.5);   // soft leather contact
+    partial(base,      0.082, vol,      'sine');             // bouncy body "pock"
+    partial(base*1.6,  0.05,  vol*0.32, 'sine');             // soft damped overtone
   }
   // ball ↔ wall: even duller + lower than the thock — muffled "thunk" on the boards
   function sfxThud(v){
