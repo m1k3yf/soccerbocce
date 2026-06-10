@@ -1,5 +1,5 @@
 /* SoccerBocce service worker — offline-first cache for an installable PWA. */
-const CACHE = 'soccerbocce-v2';
+const CACHE = 'soccerbocce-v3';
 const ASSETS = [
   './',
   './index.html',
