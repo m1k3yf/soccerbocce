@@ -897,38 +897,145 @@
     }
   }
 
-  // --- difficulty-themed backdrop (drawn in screen space behind the court) ---
+  // --- themed backdrop SCENES (pre-rendered offscreen; rebuilt on resize/theme change) ---
+  let backCv=null, backKey='';
   function drawBackdrop(){
-    const w=VW, h=VH;
+    const key=G.theme+'|'+VW+'x'+VH+'|'+(ox|0)+','+(oy|0)+','+scale.toFixed(3);
+    if(backKey!==key){ buildBackdrop(); backKey=key; }
+    if(backCv) ctx.drawImage(backCv,0,0,VW,VH);
+  }
+  function buildBackdrop(){
+    const w=VW, h=VH; if(!w||!h) return;
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    backCv=document.createElement('canvas');
+    backCv.width=Math.round(w*dpr); backCv.height=Math.round(h*dpr);
+    const o=backCv.getContext('2d'); o.scale(dpr,dpr);
+    let sd=1234567; const rnd=()=>{ sd=(sd*1103515245+12345)&0x7fffffff; return sd/0x7fffffff; };
+    // court rectangle on screen (oy can be negative when the court is taller than the screen)
+    const cx0=ox, cy0=oy, cw=W*scale, chh=H*scale;
+    const lg=(y0,y1,stops)=>{ const g=o.createLinearGradient(0,y0,0,y1);
+      for(const [t,c] of stops) g.addColorStop(t,c); return g; };
+    const ring=(grow,col)=>{ rr(o, cx0-grow, cy0-grow, cw+grow*2, chh+grow*2, 26+grow*0.6);
+      o.fillStyle=col; o.fill(); };
+    const inRect=(x,y,grow)=> x>cx0-grow && x<cx0+cw+grow && y>cy0-grow && y<cy0+chh+grow;
+
     if(G.theme==='casual'){
-      // sunny backyard — warm, relaxed
-      const g=ctx.createLinearGradient(0,0,0,h);
-      g.addColorStop(0,'#5d9468'); g.addColorStop(.5,'#35603f'); g.addColorStop(1,'#1c3a25');
-      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
-      const sun=ctx.createRadialGradient(w*0.5,-h*0.12,20, w*0.5,-h*0.12,h*0.95);
-      sun.addColorStop(0,'rgba(255,232,160,.55)'); sun.addColorStop(1,'rgba(255,232,160,0)');
-      ctx.fillStyle=sun; ctx.fillRect(0,0,w,h);
-    } else if(G.theme==='pro'){
-      // stadium night — dramatic floodlights + deep dark
-      ctx.fillStyle='#04100a'; ctx.fillRect(0,0,w,h);
-      for(const fx of [0.18,0.82]){
-        const fl=ctx.createRadialGradient(w*fx,-h*0.1,10, w*fx,h*0.35,h*0.9);
-        fl.addColorStop(0,'rgba(180,210,235,.34)'); fl.addColorStop(.5,'rgba(120,150,180,.12)'); fl.addColorStop(1,'rgba(0,0,0,0)');
-        ctx.fillStyle=fl; ctx.fillRect(0,0,w,h);
+      // ---- sunny backyard: sky, sun, hills, fence, garden ----
+      const hor=Math.max(36, Math.min(h*0.26, cy0>0 ? cy0*0.85 : h*0.16));
+      o.fillStyle=lg(0,hor,[[0,'#7fc3e8'],[0.7,'#bfe0d8'],[1,'#f2e3ad']]); o.fillRect(0,0,w,hor);
+      // sun + glow
+      const sx=w*0.78, sy=hor*0.38;
+      const sg=o.createRadialGradient(sx,sy,2,sx,sy,hor*1.5);
+      sg.addColorStop(0,'rgba(255,244,200,.95)'); sg.addColorStop(.15,'rgba(255,236,170,.55)'); sg.addColorStop(1,'rgba(255,236,170,0)');
+      o.fillStyle=sg; o.fillRect(0,0,w,hor+40);
+      o.beginPath(); o.arc(sx,sy,hor*0.16,0,7); o.fillStyle='#fff6d8'; o.fill();
+      // clouds
+      o.fillStyle='rgba(255,255,255,.75)';
+      for(let i=0;i<3;i++){ const cxx=w*(0.12+rnd()*0.5), cyy=hor*(0.2+rnd()*0.45), cr=hor*0.13;
+        for(let k=0;k<4;k++){ o.beginPath(); o.ellipse(cxx+k*cr*0.9, cyy+(k%2)*cr*0.25, cr, cr*0.62, 0, 0, 7); o.fill(); } }
+      // hills
+      o.fillStyle='#8db56c'; o.beginPath(); o.ellipse(w*0.25,hor+8,w*0.5,hor*0.5,0,Math.PI,0); o.fill();
+      o.fillStyle='#74a25a'; o.beginPath(); o.ellipse(w*0.8,hor+6,w*0.45,hor*0.38,0,Math.PI,0); o.fill();
+      // wooden fence
+      const fh=Math.max(12,h*0.022);
+      o.fillStyle='#a87d50'; o.fillRect(0,hor,w,fh);
+      o.fillStyle='#946a42';
+      for(let x=0;x<w;x+=fh*0.9) o.fillRect(x,hor,fh*0.6,fh);
+      o.fillStyle='rgba(60,38,20,.5)'; o.fillRect(0,hor+fh*0.42,w,2);
+      // lawn
+      o.fillStyle=lg(hor+fh,h,[[0,'#5d9a50'],[0.6,'#3f7a3d'],[1,'#2a5a2e']]); o.fillRect(0,hor+fh,w,h-hor-fh);
+      // lawn speckle
+      for(let i=0;i<w*h/900;i++){ const x=rnd()*w, y=hor+fh+rnd()*(h-hor-fh);
+        o.fillStyle=rnd()<.5?'rgba(255,255,230,.07)':'rgba(20,60,25,.12)'; o.fillRect(x,y,2,2); }
+      // stone patio ring around the court
+      ring(Math.max(10,w*0.016),'#c9bc9c');
+      o.save(); rr(o,cx0-Math.max(10,w*0.016),cy0-Math.max(10,w*0.016),cw+Math.max(10,w*0.016)*2,chh+Math.max(10,w*0.016)*2,30); o.clip();
+      for(let i=0;i<w/2;i++){ o.fillStyle='rgba(120,108,84,.25)'; o.fillRect(rnd()*w,rnd()*h,3,2); }
+      o.restore();
+      // garden bushes + flowers in the bottom corners
+      for(const bx of [w*0.045, w*0.955]){
+        for(let i=0;i<4;i++){ const x=bx+(rnd()-0.5)*w*0.05, y=h-(10+rnd()*h*0.07), r=8+rnd()*16;
+          if(inRect(x,y,14)) continue;
+          o.beginPath(); o.arc(x,y,r,0,7); o.fillStyle=i%2?'#2e6b35':'#3b7d40'; o.fill(); }
+        for(let i=0;i<7;i++){ const x=bx+(rnd()-0.5)*w*0.06, y=h-(8+rnd()*h*0.07);
+          if(inRect(x,y,14)) continue;
+          o.beginPath(); o.arc(x,y,2.2,0,7);
+          o.fillStyle=['#e85d5d','#f0c34e','#fff','#e88ad0'][(rnd()*4)|0]; o.fill(); }
       }
-      // slow drifting light motes
-      if(!REDUCE){ ctx.fillStyle='rgba(200,220,240,.10)';
-        for(let i=0;i<9;i++){ const mx=(i*97+ (T*9)%w)%w, my=(i*61+ T*6 + i*i*13)%h;
-          ctx.beginPath(); ctx.arc(mx,my,1.6,0,7); ctx.fill(); } }
-      const vg=ctx.createRadialGradient(w/2,h/2,h*0.2, w/2,h/2,h*0.75);
-      vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.55)');
-      ctx.fillStyle=vg; ctx.fillRect(0,0,w,h);
+    } else if(G.theme==='pro'){
+      // ---- stadium night: tiered stands full of crowd, walkway, corner light towers ----
+      o.fillStyle='#05070d'; o.fillRect(0,0,w,h);
+      const walk=Math.max(10,w*0.014), band=Math.max(26,w*0.05);
+      ring(walk+band*3,'#0d1320');           // upper tier (darkest)
+      ring(walk+band*2,'#121a2b');
+      ring(walk+band,  '#172238');           // lower tier (closest, brightest)
+      // crowd stipple across the stands
+      const dots=Math.round(w*h/140);
+      const cols=['#cfd6e4','#8b93a8','#c75d5d','#5d86c7','#d6c178','#7a8298','#9c6fb5'];
+      for(let i=0;i<dots;i++){ const x=rnd()*w, y=rnd()*h;
+        if(inRect(x,y,walk)) continue;                        // not on the walkway/court
+        if(!inRect(x,y,walk+band*3)) continue;                // only inside the stands
+        o.globalAlpha=0.35+rnd()*0.5; o.fillStyle=cols[(rnd()*cols.length)|0];
+        o.fillRect(x,y,1.6+rnd(),1.6+rnd()); }
+      o.globalAlpha=1;
+      // tier separations
+      for(const g2 of [walk+band, walk+band*2]){
+        rr(o,cx0-g2,cy0-g2,cw+g2*2,chh+g2*2,26+g2*0.6);
+        o.lineWidth=2.5; o.strokeStyle='rgba(0,0,0,.55)'; o.stroke(); }
+      // dark walkway directly around the court
+      ring(walk,'#0c1018');
+      // floodlight towers at the court corners
+      const corners=[[cx0-walk-8,cy0-walk-8],[cx0+cw+walk+8,cy0-walk-8],
+                     [cx0-walk-8,cy0+chh+walk+8],[cx0+cw+walk+8,cy0+chh+walk+8]];
+      for(const [fx,fy] of corners){
+        if(fy<-30||fy>h+30) continue;
+        const gl=o.createRadialGradient(fx,fy,2,fx,fy,Math.min(w,h)*0.16);
+        gl.addColorStop(0,'rgba(225,238,255,.5)'); gl.addColorStop(1,'rgba(225,238,255,0)');
+        o.fillStyle=gl; o.beginPath(); o.arc(fx,fy,Math.min(w,h)*0.16,0,7); o.fill();
+        o.fillStyle='#1c2433'; o.fillRect(fx-14,fy-9,28,18);
+        for(let r2=0;r2<2;r2++) for(let c2=0;c2<4;c2++){
+          o.beginPath(); o.arc(fx-9+c2*6, fy-4+r2*8, 2.1, 0, 7); o.fillStyle='#fff6d8'; o.fill(); }
+      }
     } else {
-      // club (default) — classic evening pitch
-      const g=ctx.createRadialGradient(w/2,-h*0.1,30, w/2,h*0.4,h*0.95);
-      g.addColorStop(0,'#236249'); g.addColorStop(.6,'#0d2a1f'); g.addColorStop(1,'#050d09');
-      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+      // ---- club: evening training ground — dusk sky, sunset, treeline, floodlight poles ----
+      const hor=Math.max(34, Math.min(h*0.24, cy0>0 ? cy0*0.85 : h*0.15));
+      o.fillStyle=lg(0,hor,[[0,'#102538'],[0.55,'#2c5168'],[0.82,'#b96b3e'],[1,'#eda45c']]);
+      o.fillRect(0,0,w,hor);
+      for(let i=0;i<26;i++){ const x=rnd()*w, y=rnd()*hor*0.55;
+        o.globalAlpha=0.3+rnd()*0.55; o.fillStyle='#dfe8f2'; o.fillRect(x,y,1.4,1.4); }
+      o.globalAlpha=1;
+      // treeline silhouette
+      o.fillStyle='#0a1b12';
+      for(let x=0;x<w;x+=18){ const th=6+rnd()*16;
+        o.beginPath(); o.ellipse(x+9,hor-2,14,th,0,Math.PI,0); o.fill(); }
+      o.fillRect(0,hor-2,w,4);
+      // dusk grass
+      o.fillStyle=lg(hor,h,[[0,'#2c5e38'],[0.6,'#1b4127'],[1,'#0e2718']]); o.fillRect(0,hor,w,h-hor);
+      for(let i=0;i<w*h/1100;i++){ const x=rnd()*w, y=hor+rnd()*(h-hor);
+        o.fillStyle=rnd()<.5?'rgba(220,255,220,.05)':'rgba(0,25,10,.14)'; o.fillRect(x,y,2,2); }
+      // running-track ring around the court
+      ring(Math.max(9,w*0.014),'#8a4a3a');
+      // floodlight poles in the gutters, lamps glowing
+      for(const px of [Math.max(10,cx0*0.45), Math.min(w-10,cx0+cw+(w-cx0-cw)*0.55)]){
+        const py=hor+ (h-hor)*0.18, top=Math.max(14,hor*0.45);
+        o.strokeStyle='#131c22'; o.lineWidth=4;
+        o.beginPath(); o.moveTo(px,py+30); o.lineTo(px,top); o.stroke();
+        o.fillStyle='#131c22'; o.fillRect(px-11,top-8,22,8);
+        const gl=o.createRadialGradient(px,top-4,2,px,top-4,52);
+        gl.addColorStop(0,'rgba(255,234,170,.6)'); gl.addColorStop(1,'rgba(255,234,170,0)');
+        o.fillStyle=gl; o.beginPath(); o.arc(px,top-4,52,0,7); o.fill();
+        for(let k=0;k<3;k++){ o.beginPath(); o.arc(px-6+k*6,top-4,2.2,0,7); o.fillStyle='#ffeec0'; o.fill(); }
+      }
     }
+    // court drop shadow so the playing surface sits IN the scene
+    o.save();
+    o.shadowColor='rgba(0,0,0,.6)'; o.shadowBlur=Math.max(16,w*0.02); o.shadowOffsetY=5;
+    rr(o,cx0,cy0,cw,chh,26); o.fillStyle='#1a130c'; o.fill();
+    o.restore();
+    // gentle vignette
+    const vg=o.createRadialGradient(w/2,h/2,Math.min(w,h)*0.45, w/2,h/2,Math.max(w,h)*0.78);
+    vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.34)');
+    o.fillStyle=vg; o.fillRect(0,0,w,h);
   }
 
   // --- pre-rendered 3D court (wooden bocce surround + lit sunken turf) ---
