@@ -336,8 +336,9 @@
     // Classic courts ALWAYS fit fully (desktop included). Only genuinely tall Journey
     // courts (H/W > 2.2) use the follow-camera boost — capped relative to full-fit so
     // desktop gets a sane broadcast view instead of a cropped zoom.
-    const fitAll = Math.min(vw/W, vh/H);
-    const fitWide = Math.min(vw/W, (vh*2.2)/H);
+    // Width is capped at 93% so the themed backdrop always shows in the side gutters.
+    const fitAll = Math.min(vw*0.93/W, vh/H);
+    const fitWide = Math.min(vw*0.93/W, (vh*2.2)/H);
     scale = (H/W > 2.2) ? Math.max(fitAll, Math.min(fitWide, fitAll*1.9)) : fitAll;
     ox = (vw - W*scale)/2; oy = (vh - H*scale)/2;
     // pin the HUD + corner buttons to the court, not the screen edges (desktop)
@@ -706,16 +707,22 @@
     if(now<slowUntil) dt*=0.25;              // hit-pause slow-mo
     clackBudget=16;                          // effectively: every collision rings
 
-    // broadcast camera: tall Journey courts don't fit the screen — follow the action
+    // broadcast camera: tall Journey courts don't fit the screen — follow the action.
+    // While AIMING the camera zooms OUT to show the ENTIRE court (study the field,
+    // line up the kick), then zooms in and chases the ball once it flies.
     const followMode = H*scale > VH+2;
     if(followMode && G.phase!=='cine' && G.phase!=='menu'){
-      const vhHalf=(VH/scale)/2;
-      let fy;
-      if(G.phase==='aim') fy = (G.aiming && G.aimEnd) ? (KICK_Y+G.aimEnd.y)/2 : KICK_Y-vhHalf*0.45;
-      else if(G.phase==='rolling' && G.followBall && speed(G.followBall)>0.5) fy=G.followBall.y;
-      else fy=G.pallina?G.pallina.y:H/2;
-      cam.tx=W/2; cam.tz=1;
-      cam.ty=Math.max(vhHalf, Math.min(H-vhHalf, fy));
+      if(G.phase==='aim' || G.phase==='pallina'){
+        cam.tx=W/2; cam.ty=H/2;
+        cam.tz=Math.min(1, (VH/H)/scale);          // zoom out until the full court fits
+      } else {
+        const vhHalf=(VH/scale)/2;
+        let fy;
+        if(G.phase==='rolling' && G.followBall && speed(G.followBall)>0.5) fy=G.followBall.y;
+        else fy=G.pallina?G.pallina.y:H/2;
+        cam.tx=W/2; cam.tz=1;
+        cam.ty=Math.max(vhHalf, Math.min(H-vhHalf, fy));
+      }
     } else if(!followMode && G.phase!=='cine'){ cam.tx=W/2; cam.ty=H/2; cam.tz=1; }
     // camera glides toward its target
     cam.x+=(cam.tx-cam.x)*0.07; cam.y+=(cam.ty-cam.y)*0.07; cam.z+=(cam.tz-cam.z)*0.07;
@@ -896,17 +903,17 @@
     if(G.theme==='casual'){
       // sunny backyard — warm, relaxed
       const g=ctx.createLinearGradient(0,0,0,h);
-      g.addColorStop(0,'#3a6b4c'); g.addColorStop(.5,'#274d35'); g.addColorStop(1,'#16301f');
+      g.addColorStop(0,'#5d9468'); g.addColorStop(.5,'#35603f'); g.addColorStop(1,'#1c3a25');
       ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
-      const sun=ctx.createRadialGradient(w*0.5,-h*0.12,20, w*0.5,-h*0.12,h*0.7);
-      sun.addColorStop(0,'rgba(255,232,160,.34)'); sun.addColorStop(1,'rgba(255,232,160,0)');
+      const sun=ctx.createRadialGradient(w*0.5,-h*0.12,20, w*0.5,-h*0.12,h*0.95);
+      sun.addColorStop(0,'rgba(255,232,160,.55)'); sun.addColorStop(1,'rgba(255,232,160,0)');
       ctx.fillStyle=sun; ctx.fillRect(0,0,w,h);
     } else if(G.theme==='pro'){
       // stadium night — dramatic floodlights + deep dark
       ctx.fillStyle='#04100a'; ctx.fillRect(0,0,w,h);
       for(const fx of [0.18,0.82]){
         const fl=ctx.createRadialGradient(w*fx,-h*0.1,10, w*fx,h*0.35,h*0.9);
-        fl.addColorStop(0,'rgba(180,210,235,.20)'); fl.addColorStop(.5,'rgba(120,150,180,.07)'); fl.addColorStop(1,'rgba(0,0,0,0)');
+        fl.addColorStop(0,'rgba(180,210,235,.34)'); fl.addColorStop(.5,'rgba(120,150,180,.12)'); fl.addColorStop(1,'rgba(0,0,0,0)');
         ctx.fillStyle=fl; ctx.fillRect(0,0,w,h);
       }
       // slow drifting light motes
@@ -919,7 +926,7 @@
     } else {
       // club (default) — classic evening pitch
       const g=ctx.createRadialGradient(w/2,-h*0.1,30, w/2,h*0.4,h*0.95);
-      g.addColorStop(0,'#163f30'); g.addColorStop(.6,'#0a1f17'); g.addColorStop(1,'#050d09');
+      g.addColorStop(0,'#236249'); g.addColorStop(.6,'#0d2a1f'); g.addColorStop(1,'#050d09');
       ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
     }
   }
