@@ -262,7 +262,7 @@
     aiming:false, aimStart:null, aimNow:null, aimPath:[], aimEnd:null,
     settleTimer:0, holder:null, lastKicker:null,
     cine:null, cineTimers:[],
-    jLvl:1, jResult:null, ballStyle:'soccer', obstacles:[], followBall:null,
+    jLvl:1, jResult:null, ballStyle:'soccer', aid:'full', obstacles:[], followBall:null,
   };
 
   // haptics (no-op where unsupported, e.g. iOS Safari)
@@ -273,33 +273,34 @@
   // ---------- Journey mode: bocce court → full soccer pitch ----------
   // Obstacles are fractions of the court (fx,fy) so layouts scale with it.
   const LEVELS=[
-    { name:"Nonna's Courtyard", sub:"Where it all begins.", W:600,H:980, target:5, ball:'bocce',
+    { name:"Nonna's Courtyard", sub:"Where it all begins.", aid:'full',
+      aidNote:'The guide shows exactly where your kick will stop. It fades as you level up — learn the feel!', W:600,H:980, target:5, ball:'bocce',
       theme:'casual', fr:0.987, maxP:33, ai:{base:'casual',err:0.34,knock:0.10,smash:0}, obs:[] },
-    { name:"The Garden", sub:"Mind the flower pots.", W:600,H:980, target:5, ball:'bocce',
+    { name:"The Garden", sub:"Mind the flower pots.", aid:'full', W:600,H:980, target:5, ball:'bocce',
       theme:'casual', fr:0.987, maxP:33, ai:{base:'casual',err:0.29,knock:0.15,smash:0},
       obs:[{fx:.30,fy:.45,r:16,col:'#b0593a'},{fx:.70,fy:.55,r:16,col:'#b0593a'}] },
-    { name:"Piazza del Paese", sub:"Around the fountain.", W:620,H:1240, target:5, ball:'bocce',
+    { name:"Piazza del Paese", sub:"Around the fountain.", aid:'full', W:620,H:1240, target:5, ball:'bocce',
       theme:'casual', fr:0.987, maxP:33, ai:{base:'casual',err:0.25,knock:0.22,smash:0.05},
       obs:[{fx:.50,fy:.42,r:34,col:'#9aa7ad'}] },
-    { name:"The Park", sub:"Someone brought a soccer ball.", W:660,H:1520, target:7, ball:'soccer',
+    { name:"The Park", sub:"Someone brought a soccer ball.", aid:'partial', aidNote:'Heads up: the aim guide is shorter now. Start trusting the feel.', W:660,H:1520, target:7, ball:'soccer',
       theme:'casual', fr:0.9875, maxP:34, ai:{base:'club',err:0.20,knock:0.35,smash:0.08},
       obs:[{fx:.25,fy:.50,r:22,col:'#2e7d4f'},{fx:.75,fy:.38,r:22,col:'#2e7d4f'}] },
-    { name:"The Cage", sub:"Fast turf, tight walls.", W:660,H:1760, target:7, ball:'soccer',
+    { name:"The Cage", sub:"Fast turf, tight walls.", aid:'partial', W:660,H:1760, target:7, ball:'soccer',
       theme:'club', fr:0.988, maxP:34, ai:{base:'club',err:0.16,knock:0.50,smash:0.12}, obs:[] },
-    { name:"Training Ground", sub:"Slalom through the cones.", W:700,H:2050, target:7, ball:'soccer',
+    { name:"Training Ground", sub:"Slalom through the cones.", aid:'partial', W:700,H:2050, target:7, ball:'soccer',
       theme:'club', fr:0.9885, maxP:35, ai:{base:'club',err:0.13,knock:0.60,smash:0.15},
       obs:[{fx:.30,fy:.50,r:12,col:'#ff8c42'},{fx:.50,fy:.42,r:12,col:'#ff8c42'},{fx:.70,fy:.50,r:12,col:'#ff8c42'}] },
-    { name:"Sunday League", sub:"Beat the wall.", W:720,H:2320, target:7, ball:'soccer',
+    { name:"Sunday League", sub:"Beat the wall.", aid:'none', aidNote:'No more aim guide. You know the touch by now.', W:720,H:2320, target:7, ball:'soccer',
       theme:'club', fr:0.989, maxP:35, ai:{base:'pro',err:0.10,knock:0.70,smash:0.20},
       obs:[{fx:.38,fy:.45,r:14,col:'#d9d2c5'},{fx:.50,fy:.45,r:14,col:'#d9d2c5'},{fx:.62,fy:.45,r:14,col:'#d9d2c5'}] },
-    { name:"Curva Nord", sub:"The crowd is watching.", W:750,H:2600, target:7, ball:'soccer',
+    { name:"Curva Nord", sub:"The crowd is watching.", aid:'none', W:750,H:2600, target:7, ball:'soccer',
       theme:'pro', fr:0.9895, maxP:36, ai:{base:'pro',err:0.08,knock:0.80,smash:0.25},
       obs:[{fx:.34,fy:.55,r:14,col:'#d9d2c5'},{fx:.46,fy:.55,r:14,col:'#d9d2c5'},
            {fx:.58,fy:.35,r:14,col:'#d9d2c5'},{fx:.70,fy:.35,r:14,col:'#d9d2c5'}] },
-    { name:"Stadio", sub:"Full pitch. Full power.", W:780,H:2900, target:7, ball:'soccer',
+    { name:"Stadio", sub:"Full pitch. Full power.", aid:'none', W:780,H:2900, target:7, ball:'soccer',
       theme:'pro', fr:0.990, maxP:36, ai:{base:'pro',err:0.06,knock:0.85,smash:0.30},
       obs:[{fx:.50,fy:.50,r:26,col:'#9aa7ad'},{fx:.30,fy:.30,r:14,col:'#d9d2c5'},{fx:.70,fy:.30,r:14,col:'#d9d2c5'}] },
-    { name:"La Finale", sub:"La Leggenda awaits.", W:780,H:2900, target:9, ball:'soccer',
+    { name:"La Finale", sub:"La Leggenda awaits.", aid:'none', W:780,H:2900, target:9, ball:'soccer',
       theme:'pro', fr:0.990, maxP:36, ai:{base:'pro',err:0.045,knock:0.95,smash:0.40,name:'La Leggenda'},
       obs:[{fx:.38,fy:.40,r:14,col:'#d9d2c5'},{fx:.46,fy:.40,r:14,col:'#d9d2c5'},
            {fx:.54,fy:.40,r:14,col:'#d9d2c5'},{fx:.62,fy:.40,r:14,col:'#d9d2c5'}] },
@@ -309,7 +310,7 @@
   function setupLevel(i){
     const L=LEVELS[i-1];
     W=L.W; H=L.H; KICK_Y=H-66; FRICTION=L.fr; MAX_POWER=L.maxP;
-    G.theme=L.theme; G.target=L.target; G.ballStyle=L.ball;
+    G.theme=L.theme; G.target=L.target; G.ballStyle=L.ball; G.aid=L.aid||'full';
     G.obstacles=L.obs.map(o=>({x:o.fx*W, y:o.fy*H, r:o.r, col:o.col}));
     const base=PERSONAS[L.ai.base];
     G.persona={...base, name:L.ai.name||base.name, knock:L.ai.knock, smash:L.ai.smash};
@@ -318,7 +319,7 @@
   }
   function setupClassic(){
     W=600; H=980; KICK_Y=H-66; FRICTION=0.987; MAX_POWER=33;
-    G.ballStyle='soccer'; G.obstacles=[];
+    G.ballStyle='soccer'; G.obstacles=[]; G.aid='full';
     resize(); buildCourt();
   }
 
@@ -332,12 +333,20 @@
     cv.style.width = vw+'px'; cv.style.height = vh+'px';
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.imageSmoothingEnabled = true;
-    // classic courts fit whole; tall Journey courts fit the WIDTH (camera pans the rest),
-    // capped so at least ~45% of the court is on screen at once
+    // Classic courts ALWAYS fit fully (desktop included). Only genuinely tall Journey
+    // courts (H/W > 2.2) use the follow-camera boost — capped relative to full-fit so
+    // desktop gets a sane broadcast view instead of a cropped zoom.
     const fitAll = Math.min(vw/W, vh/H);
     const fitWide = Math.min(vw/W, (vh*2.2)/H);
-    scale = Math.max(fitAll, fitWide);
+    scale = (H/W > 2.2) ? Math.max(fitAll, Math.min(fitWide, fitAll*1.9)) : fitAll;
     ox = (vw - W*scale)/2; oy = (vh - H*scale)/2;
+    // pin the HUD + corner buttons to the court, not the screen edges (desktop)
+    const inset = Math.max(0, ox-8);
+    const hudEl=document.getElementById('hud');
+    if(hudEl){ hudEl.style.left=inset+'px'; hudEl.style.right=inset+'px'; }
+    const mb=document.getElementById('muteBtn'), nb=document.getElementById('menuBtn');
+    if(mb) mb.style.left=(inset+14)+'px';
+    if(nb) nb.style.left=(inset+78)+'px';
   }
   window.addEventListener('resize', resize);
   function toWorld(cx, cy){
@@ -1198,21 +1207,32 @@
     const b=G.activeBall, s=G.aimStart, n=G.aimNow; if(!s||!n) return;
     const k=computeKick();
     const power=k.power, ratio=power/MAX_POWER, ang=k.ang;
-    const path=simulatePath(b.x, b.y, Math.cos(ang)*power, Math.sin(ang)*power, k.sideSpin);
-    const end=path[path.length-1];
-    G.aimEnd=end;                                   // broadcast camera peeks at the landing
     const curving = Math.abs(k.sideSpin)>0.006;
     const col = ratio<0.5?'120,230,150' : ratio<0.8?'255,211,90':'255,120,90';
     ctx.save();
-    // dotted predicted path — follows real bounces off the walls
-    ctx.fillStyle=`rgb(${col})`;
-    const N=path.length;
-    for(let i=1;i<N;i++){ const t=i/N;
-      ctx.globalAlpha=0.9-t*0.6; ctx.beginPath(); ctx.arc(path[i].x,path[i].y, 5-t*2.4, 0,7); ctx.fill(); }
-    ctx.globalAlpha=1;
-    // landing ring at the true stopping point
-    ctx.beginPath(); ctx.arc(end.x,end.y,11,0,7); ctx.lineWidth=2.5; ctx.strokeStyle=`rgb(${col})`; ctx.stroke();
-    ctx.beginPath(); ctx.arc(end.x,end.y,3,0,7); ctx.fillStyle=`rgb(${col})`; ctx.fill();
+    // progressive aim assist (Journey): 'full' path+landing, 'partial' short stub, 'none' touch only
+    if(G.aid!=='none'){
+      const path=simulatePath(b.x, b.y, Math.cos(ang)*power, Math.sin(ang)*power, k.sideSpin);
+      const end=path[path.length-1];
+      const N = G.aid==='partial' ? Math.max(3, Math.ceil(path.length*0.3)) : path.length;
+      G.aimEnd = G.aid==='partial' ? path[N-1] : end;   // camera peeks only as far as the guide
+      ctx.fillStyle=`rgb(${col})`;
+      for(let i=1;i<N;i++){ const t=i/N;
+        ctx.globalAlpha=0.9-t*0.6; ctx.beginPath(); ctx.arc(path[i].x,path[i].y, 5-t*2.4, 0,7); ctx.fill(); }
+      ctx.globalAlpha=1;
+      if(G.aid==='full'){
+        // landing ring at the true stopping point
+        ctx.beginPath(); ctx.arc(end.x,end.y,11,0,7); ctx.lineWidth=2.5; ctx.strokeStyle=`rgb(${col})`; ctx.stroke();
+        ctx.beginPath(); ctx.arc(end.x,end.y,3,0,7); ctx.fillStyle=`rgb(${col})`; ctx.fill();
+      } else {
+        // fade-out chevron where the guide gives up
+        const p1=path[N-1];
+        ctx.globalAlpha=0.55; ctx.font='800 16px -apple-system,Arial,sans-serif';
+        ctx.textAlign='center'; ctx.fillText('?', p1.x, p1.y-10); ctx.globalAlpha=1;
+      }
+    } else {
+      G.aimEnd=null;                                    // no peeking for the camera either
+    }
     // power ring + pull handle
     ctx.beginPath(); ctx.arc(b.x,b.y,b.r+9,-Math.PI/2,-Math.PI/2+ratio*6.283);
     ctx.strokeStyle=`rgb(${col})`; ctx.lineWidth=4.5; ctx.lineCap='round'; ctx.stroke();
@@ -1533,7 +1553,7 @@
     if(G.mode==='journey'){
       setupLevel(G.jLvl);
       startMatch();
-      coach(`Lv ${G.jLvl} — ${LEVELS[G.jLvl-1].name}. ${LEVELS[G.jLvl-1].sub}`);
+      levelIntro();
       return;
     }
     setupClassic();
@@ -1555,11 +1575,19 @@
         G.jLvl++;
       }
       setupLevel(G.jLvl); startMatch();
-      coach(`Lv ${G.jLvl} — ${LEVELS[G.jLvl-1].name}. ${LEVELS[G.jLvl-1].sub}`);
+      levelIntro();
       return;
     }
     startMatch();
   };
+  // level intro line + (on guide-transition levels) a follow-up note about the aim assist
+  function levelIntro(){
+    const L=LEVELS[G.jLvl-1];
+    coach(`Lv ${G.jLvl} — ${L.name}. ${L.sub}`);
+    if(L.aidNote){ const lvl=G.jLvl;
+      setTimeout(()=>{ if(G.mode==='journey' && G.jLvl===lvl && G.phase!=='menu') coach(L.aidNote); }, 4200);
+    }
+  }
   document.getElementById('menuBtn').onclick=()=>{
     if(confirm('Quit this match and return to menu?')){
       for(const t of G.cineTimers) clearTimeout(t);
