@@ -243,6 +243,7 @@
 
   let scale = 1, ox = 0, oy = 0;
   let VW = 0, VH = 0;                       // viewport size (CSS px) for the backdrop
+  let topSafe = 70, botSafe = 70, usableH = 0;   // HUD-clear band: court + camera focus live here
   let T = 0;                                // running time (s) for animations
   let clackBudget = 4;                      // cap simultaneous ball-clicks per frame
   let slowUntil = 0;                        // hit-pause: wall-clock ms until which time runs slow
@@ -342,10 +343,18 @@
     // courts (H/W > 2.2) use the follow-camera boost — capped relative to full-fit so
     // desktop gets a sane broadcast view instead of a cropped zoom.
     // Width is capped at 93% so the themed backdrop always shows in the side gutters.
-    const fitAll = Math.min(vw*0.93/W, vh/H);
-    const fitWide = Math.min(vw*0.93/W, (vh*2.2)/H);
+    // reserve a HUD-clear band: measure the score card's bottom edge (top), keep room
+    // for the corner buttons (bottom). The court + camera focus are centered in this band
+    // so balls never hide behind the YOU / opponent cards.
+    topSafe = 70; botSafe = 72;
+    const sc = document.getElementById('scoreA');
+    if(sc){ const b = sc.getBoundingClientRect().bottom; if(b>10 && b<vh*0.4) topSafe = b+10; }
+    usableH = Math.max(140, vh - topSafe - botSafe);
+    const fitAll = Math.min(vw*0.93/W, usableH/H);
+    const fitWide = Math.min(vw*0.93/W, (usableH*2.2)/H);
     scale = (H/W > 2.2) ? Math.max(fitAll, Math.min(fitWide, fitAll*1.9)) : fitAll;
-    ox = (vw - W*scale)/2; oy = (vh - H*scale)/2;
+    ox = (vw - W*scale)/2;
+    oy = topSafe + (usableH - H*scale)/2;     // court-screen-center sits at the band's center
     // pin the HUD + corner buttons to the court, not the screen edges (desktop)
     const inset = Math.max(0, ox-8);
     const hudEl=document.getElementById('hud');
@@ -452,10 +461,13 @@
     // frame the cluster: pallina + counting balls + a little margin
     const xs=[G.pallina.x,...counting.map(b=>b.x)], ys=[G.pallina.y,...counting.map(b=>b.y)];
     const minX=Math.min(...xs)-90, maxX=Math.max(...xs)+90;
-    const minY=Math.min(...ys)-90, maxY=Math.max(...ys)+90;
-    const z=Math.max(1.15, Math.min(2.1, Math.min(W/(maxX-minX), H/(maxY-minY))*0.9));
-    cam.tx=Math.max(W/(2*z), Math.min(W-W/(2*z), (minX+maxX)/2));
-    cam.ty=Math.max(H/(2*z), Math.min(H-H/(2*z), (minY+maxY)/2));
+    const minY=Math.min(...ys)-110, maxY=Math.max(...ys)+70;   // extra headroom for the +1 pops
+    // size the zoom to the actual visible band, not the whole court
+    const visW=VW/scale, visH=usableH/scale;
+    const z=Math.max(1.15, Math.min(2.6, Math.min(visW/(maxX-minX), visH/(maxY-minY))*0.9));
+    const halfWx=Math.min(W/2, visW/(2*z));
+    cam.tx=Math.max(halfWx, Math.min(W-halfWx, (minX+maxX)/2));
+    cam.ty=(minY+maxY)/2;                       // centre on the cluster — maps to the HUD-clear band
     cam.tz=z;
     G.cine={lines:[], winTeam, matchDone}; G.cineTimers=[];
     const col = winTeam==='A' ? '#5fe6a3' : '#ff8a88';
@@ -715,18 +727,18 @@
     // broadcast camera: tall Journey courts don't fit the screen — follow the action.
     // While AIMING the camera zooms OUT to show the ENTIRE court (study the field,
     // line up the kick), then zooms in and chases the ball once it flies.
-    const followMode = H*scale > VH+2;
+    const followMode = H*scale > usableH+2;        // court taller than the HUD-clear band
     if(followMode && G.phase!=='cine' && G.phase!=='menu'){
       if(G.phase==='aim' || G.phase==='pallina'){
         cam.tx=W/2; cam.ty=H/2;
-        cam.tz=Math.min(1, (VH/H)/scale);          // zoom out until the full court fits
+        cam.tz=Math.min(1, usableH/(H*scale));     // zoom out until the full court fits the band
       } else {
-        const vhHalf=(VH/scale)/2;
+        // follow the live ball (then the pallina). cam.ty maps to the band centre via oy,
+        // so a focus at the very TOP shows just below the HUD with its +1 pops visible.
         let fy;
         if(G.phase==='rolling' && G.followBall && speed(G.followBall)>0.5) fy=G.followBall.y;
         else fy=G.pallina?G.pallina.y:H/2;
-        cam.tx=W/2; cam.tz=1;
-        cam.ty=Math.max(vhHalf, Math.min(H-vhHalf, fy));
+        cam.tx=W/2; cam.tz=1; cam.ty=fy;
       }
     } else if(!followMode && G.phase!=='cine'){ cam.tx=W/2; cam.ty=H/2; cam.tz=1; }
     // camera glides toward its target
