@@ -803,6 +803,7 @@
     // cinematic camera (identity during normal play)
     ctx.translate(W/2,H/2); ctx.scale(cam.z,cam.z); ctx.translate(-cam.x,-cam.y);
 
+    drawStadiumFrame();                       // world-space stands around the pitch (stadium scenes)
     if(courtCanvas) ctx.drawImage(courtCanvas,0,0,W,H);
     if(G.phase!=='menu'){ drawKickZone(); drawMeasures(); }
     drawObstacles();
@@ -1185,15 +1186,15 @@
       speckle(hor, w*h/1100, 'rgba(220,255,220,.05)','rgba(0,25,10,.14)');
       ring(Math.max(9,w*0.014),'#8a4a3a');
       floodPoles([Math.max(10,cx0*0.45), Math.min(w-10,cx0+cw+(w-cx0-cw)*0.55)],hor);
-    } else if(S==='curva'){
-      // tifo crowd: home-end color sections + flares
-      stands(2,(x,y)=>{ const band2=Math.floor(x/(w/6));
-        if(rnd()<0.55) return band2%2 ? '#3fae6a' : '#c74b4b';
-        return neutral[(rnd()*neutral.length)|0]; }, {flares:true});
-    } else if(S==='finale'){
-      stands(3,()=> rnd()<0.4 ? '#d6b24e' : neutral[(rnd()*neutral.length)|0], {flares:true});
-      fireworks(5);
-    } else { // 'stadio' (default pro)
+    } else if(S==='curva' || S==='finale' || S==='stadio'){
+      // night sky behind the bowl — the actual stands are drawn in world space (drawStadiumFrame)
+      o.fillStyle=lg(0,h,[[0,'#0a1020'],[0.5,'#070b16'],[1,'#04070e']]); o.fillRect(0,0,w,h);
+      // floodlight haze spilling in from above
+      for(const fx of [0.16,0.84]){ const fl=o.createRadialGradient(w*fx,-h*0.08,10, w*fx,h*0.3,h*0.85);
+        fl.addColorStop(0,'rgba(150,180,215,.14)'); fl.addColorStop(1,'rgba(0,0,0,0)');
+        o.fillStyle=fl; o.fillRect(0,0,w,h); }
+      if(S==='finale'){ fireworks(4); }
+    } else { // safety fallback
       stands(3,()=> neutral[(rnd()*neutral.length)|0], {});
     }
 
@@ -1537,6 +1538,83 @@
   function rr(o,x,y,w,h,r){ o.beginPath();
     o.moveTo(x+r,y); o.arcTo(x+w,y,x+w,y+h,r); o.arcTo(x+w,y+h,x,y+h,r);
     o.arcTo(x,y+h,x,y,r); o.arcTo(x,y,x+w,y,r); o.closePath(); }
+  // append a rounded-rect subpath to the CURRENT path (no beginPath) — for compound / even-odd clips
+  function rrSub(o,x,y,w,h,r){ o.moveTo(x+r,y); o.arcTo(x+w,y,x+w,y+h,r); o.arcTo(x+w,y+h,x,y+h,r);
+    o.arcTo(x,y+h,x,y,r); o.arcTo(x,y,x+w,y,r); o.closePath(); }
+
+  // ---- world-space stadium bowl (drawn around the pitch; scrolls + zooms with the field) ----
+  const isStadiumScene=()=> G.scene==='stadio'||G.scene==='curva'||G.scene==='finale';
+  const stadiumMargin=()=> isStadiumScene() ? W*0.85 : 0;
+  let crowdPat=null;
+  function crowdPattern(){
+    if(crowdPat) return crowdPat;
+    const t=document.createElement('canvas'); t.width=t.height=44; const c=t.getContext('2d');
+    c.fillStyle='#0d1422'; c.fillRect(0,0,44,44);
+    const cols=['#dfe6f2','#aab2c6','#c75d5d','#5d86c7','#e0ca72','#9c6fb5','#3fae6a','#8a92a6','#e08a4a'];
+    let s2=99; const r=()=>{ s2=(s2*1103515245+12345)&0x7fffffff; return s2/0x7fffffff; };
+    for(let i=0;i<150;i++){ c.globalAlpha=0.5+r()*0.5; c.fillStyle=cols[(r()*cols.length)|0];
+      c.fillRect(r()*44, r()*44, 2.4, 2.4); }
+    crowdPat=ctx.createPattern(t,'repeat'); return crowdPat;
+  }
+  function drawStadiumFrame(){
+    const M=stadiumMargin(); if(!M) return;
+    const ox2=-M, oy2=-M, ow=W+2*M, oh=H+2*M;
+    const walk=Math.max(16,W*0.055);
+    // dark concrete bowl (also forms the walkway just outside the pitch)
+    rr(ctx,ox2,oy2,ow,oh,46); ctx.fillStyle='#070b14'; ctx.fill();
+    // crowd in the stand annulus (between court+walkway and the outer bowl)
+    ctx.save();
+    ctx.beginPath(); rrSub(ctx,ox2,oy2,ow,oh,46);
+    rrSub(ctx,-walk,-walk,W+2*walk,H+2*walk,30);
+    ctx.clip('evenodd');
+    ctx.fillStyle=crowdPattern(); ctx.fillRect(ox2,oy2,ow,oh);
+    // depth shading toward the back of the stands
+    const gh=ctx.createLinearGradient(ox2,0,ox2+ow,0);
+    gh.addColorStop(0,'rgba(0,0,0,.6)'); gh.addColorStop(.2,'rgba(0,0,0,0)');
+    gh.addColorStop(.8,'rgba(0,0,0,0)'); gh.addColorStop(1,'rgba(0,0,0,.6)');
+    ctx.fillStyle=gh; ctx.fillRect(ox2,oy2,ow,oh);
+    const gv=ctx.createLinearGradient(0,oy2,0,oy2+oh);
+    gv.addColorStop(0,'rgba(0,0,0,.6)'); gv.addColorStop(.16,'rgba(0,0,0,0)');
+    gv.addColorStop(.84,'rgba(0,0,0,0)'); gv.addColorStop(1,'rgba(0,0,0,.6)');
+    ctx.fillStyle=gv; ctx.fillRect(ox2,oy2,ow,oh);
+    // tifo color sections (curva) / golden home end (finale)
+    if(G.scene==='curva'){ for(let i=0;i<10;i++){
+      ctx.fillStyle=i%2?'rgba(63,174,106,.45)':'rgba(199,75,75,.45)';
+      ctx.fillRect(ox2+ow*i/10, oy2, ow/10, oh); } }
+    else if(G.scene==='finale'){ ctx.fillStyle='rgba(214,178,78,.34)'; ctx.fillRect(ox2,oy2,ow,oh); }
+    ctx.restore();
+    // tier step lines — concrete edge (light) + shadow under each, so the stand reads as stepped tiers
+    for(const f of [0.3,0.55,0.78]){
+      const g=walk+(M-walk)*f;
+      ctx.beginPath(); rrSub(ctx,-g,-g,W+2*g,H+2*g,28+g*0.25);
+      ctx.lineWidth=Math.max(2,W*0.008); ctx.strokeStyle='rgba(255,255,255,.16)'; ctx.stroke();
+      ctx.beginPath(); rrSub(ctx,-(g+W*0.012),-(g+W*0.012),W+2*(g+W*0.012),H+2*(g+W*0.012),28+g*0.25);
+      ctx.lineWidth=Math.max(2,W*0.01); ctx.strokeStyle='rgba(0,0,0,.4)'; ctx.stroke(); }
+    // bright front rail at the edge of the pitch (advertising boards / barrier)
+    const fr=walk*0.5;
+    ctx.beginPath(); rrSub(ctx,-fr,-fr,W+2*fr,H+2*fr,28);
+    ctx.lineWidth=Math.max(3,W*0.014); ctx.strokeStyle='rgba(220,232,245,.5)'; ctx.stroke();
+    // stadium roof — thick dark ring at the very back
+    ctx.beginPath(); rrSub(ctx,ox2,oy2,ow,oh,46);
+    ctx.lineWidth=Math.max(10,W*0.035); ctx.strokeStyle='#0c121d'; ctx.stroke();
+    // floodlight towers at the four corners, with light haze
+    const off=M*0.6;
+    for(const [tx,ty] of [[-off,-off],[W+off,-off],[-off,H+off],[W+off,H+off]]){
+      const lr=M*0.6;
+      const gl=ctx.createRadialGradient(tx,ty,2,tx,ty,lr);
+      gl.addColorStop(0,'rgba(228,240,255,.30)'); gl.addColorStop(1,'rgba(228,240,255,0)');
+      ctx.fillStyle=gl; ctx.beginPath(); ctx.arc(tx,ty,lr,0,7); ctx.fill();
+      ctx.fillStyle='#1a2230'; ctx.fillRect(tx-M*0.11, ty-M*0.06, M*0.22, M*0.12);
+      for(let r2=0;r2<2;r2++) for(let c2=0;c2<4;c2++){ ctx.beginPath();
+        ctx.arc(tx-M*0.075+c2*M*0.05, ty-M*0.03+r2*M*0.06, M*0.02, 0, 7); ctx.fillStyle='#fff6d8'; ctx.fill(); } }
+    // fireworks above the far stand on the final
+    if(G.scene==='finale' && !REDUCE){ const fcols=['#ffd35a','#8ff0bf','#ff9a8b','#9ecbff'];
+      let s3=((T*0.7)|0)%5; const r=(k)=>{ const v=Math.sin((s3*9.7+k*3.3))*0.5+0.5; return v; };
+      for(let i=0;i<4;i++){ const fx=-M*0.5+ (W+M)*r(i), fy=-M*0.55+ r(i+9)*M*0.3, col=fcols[i%4];
+        ctx.fillStyle=col;
+        for(let k=0;k<12;k++){ const a=k/12*6.283, rr3=M*0.05+r(i*3+k)*M*0.1;
+          ctx.beginPath(); ctx.arc(fx+Math.cos(a)*rr3, fy+Math.sin(a)*rr3, M*0.01, 0, 7); ctx.fill(); } } }
+  }
 
   function drawParticles(){
     for(const p of parts){ const a=Math.max(0,p.life);
